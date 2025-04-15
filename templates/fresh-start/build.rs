@@ -1,4 +1,4 @@
-use micro_games_kit::assets::AssetPackage;
+use quaso::assets::AssetPackage;
 
 fn main() {
     println!("cargo::rerun-if-changed=./assets/");

@@ -10,11 +10,11 @@ publish = false
 name = "game_web"
 crate-type = ["cdylib"]
 
-[dependencies.micro-games-kit]
-version = "0.34"
+[dependencies.quaso]
+version = "0.35"
 
-[build-dependencies.micro-games-kit]
-version = "0.34"
+[build-dependencies.quaso]
+version = "0.35"
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 wasm-bindgen = "0.2"

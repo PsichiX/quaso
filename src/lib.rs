@@ -71,7 +71,7 @@ impl GameLauncher {
     pub fn new(instance: GameInstance) -> Self {
         Self {
             instance,
-            title: "MicroGamesKit".to_owned(),
+            title: "Quaso".to_owned(),
             config: Config::default(),
         }
     }

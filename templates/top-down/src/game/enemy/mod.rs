@@ -15,7 +15,7 @@ use super::{
     player::PlayerState,
     utils::events::{Event, Events, Instigator},
 };
-use micro_games_kit::{
+use quaso::{
     animation::frame::NamedAnimation,
     character::{Character, CharacterController},
     context::GameContext,

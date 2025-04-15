@@ -14,7 +14,7 @@ use crate::game::{
         space::{Space, SpaceObject, SpaceObjectId},
     },
 };
-use micro_games_kit::{
+use quaso::{
     character::Character,
     context::GameContext,
     game::{GameObject, GameState, GameStateChange},

@@ -1,4 +1,5 @@
-use micro_games_kit::{
+use quaso::{
+    GameLauncher,
     assets::{make_directory_database, shader::ShaderAsset},
     config::Config,
     context::GameContext,
@@ -6,8 +7,8 @@ use micro_games_kit::{
     third_party::{
         raui_core::layout::CoordsMappingScaling,
         raui_immediate_widgets::core::{
-            text_box, Color, TextBoxFont, TextBoxHorizontalAlign, TextBoxProps,
-            TextBoxVerticalAlign,
+            Color, TextBoxFont, TextBoxHorizontalAlign, TextBoxProps, TextBoxVerticalAlign,
+            text_box,
         },
         spitfire_draw::{
             sprite::{Sprite, SpriteTexture},
@@ -23,7 +24,6 @@ use micro_games_kit::{
         vek::Vec2,
         windowing::event::VirtualKeyCode,
     },
-    GameLauncher,
 };
 use std::error::Error;
 

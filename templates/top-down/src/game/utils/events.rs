@@ -1,5 +1,5 @@
 use crate::game::{enemy::EnemyState, item::Item};
-use micro_games_kit::third_party::{typid::ID, vek::Vec2};
+use quaso::third_party::{typid::ID, vek::Vec2};
 use std::{borrow::Cow, cell::RefCell};
 
 thread_local! {

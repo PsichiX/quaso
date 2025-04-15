@@ -1,5 +1,5 @@
 use crate::game::enemy::EnemyState;
-use micro_games_kit::{
+use quaso::{
     character::CharacterMemory,
     third_party::{
         emergent::task::Task,

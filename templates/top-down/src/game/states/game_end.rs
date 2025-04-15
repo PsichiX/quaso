@@ -3,7 +3,7 @@ use crate::game::{
     ui::{make_theme, text_button::text_button},
     utils::events::{Event, Events},
 };
-use micro_games_kit::{
+use quaso::{
     context::GameContext,
     game::{GameState, GameStateChange},
     third_party::{

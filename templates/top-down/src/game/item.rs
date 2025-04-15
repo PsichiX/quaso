@@ -1,4 +1,4 @@
-use micro_games_kit::{
+use quaso::{
     context::GameContext,
     game::GameObject,
     third_party::{

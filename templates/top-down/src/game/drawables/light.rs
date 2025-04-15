@@ -1,4 +1,4 @@
-use micro_games_kit::third_party::{
+use quaso::third_party::{
     spitfire_draw::{
         context::DrawContext,
         sprite::Sprite,

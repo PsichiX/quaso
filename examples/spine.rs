@@ -1,5 +1,6 @@
 use glutin::event::VirtualKeyCode;
-use micro_games_kit::{
+use quaso::{
+    GameLauncher,
     animation::spine::{
         BudgetedSpineSkeleton, BudgetedSpineSkeletonLodSwitchStrategy, LodSpineSkeleton,
         SpineSkeleton,
@@ -12,7 +13,6 @@ use micro_games_kit::{
         spitfire_draw::utils::Drawable,
         spitfire_glow::graphics::{CameraScaling, Shader},
     },
-    GameLauncher,
 };
 use spitfire_input::{
     CardinalInputCombinator, InputActionRef, InputConsume, InputMapping, VirtualAction,

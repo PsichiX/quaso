@@ -1,5 +1,5 @@
 use super::{PlayerState, PlayerWeapon};
-use micro_games_kit::{character::CharacterMemory, third_party::emergent::condition::Condition};
+use quaso::{character::CharacterMemory, third_party::emergent::condition::Condition};
 
 pub struct PlayerIsMovingCondition;
 

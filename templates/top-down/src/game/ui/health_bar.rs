@@ -1,4 +1,4 @@
-use micro_games_kit::third_party::{
+use quaso::third_party::{
     raui_core::props::Props,
     raui_immediate_widgets::core::{
         containers::content_box, image_box, Color, ContentBoxItemLayout, ImageBoxFrame,

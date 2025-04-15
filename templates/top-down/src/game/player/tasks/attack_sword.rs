@@ -2,7 +2,7 @@ use crate::game::{
     player::PlayerState,
     utils::events::{Event, Events, Instigator},
 };
-use micro_games_kit::{
+use quaso::{
     animation::frame::{FrameAnimation, NamedAnimation},
     character::CharacterMemory,
     third_party::emergent::task::Task,

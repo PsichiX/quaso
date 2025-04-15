@@ -1,9 +1,7 @@
 pub mod states;
 
 use self::states::gameplay::Gameplay;
-use micro_games_kit::{
-    assets::make_memory_database, config::Config, game::GameInstance, GameLauncher,
-};
+use quaso::{assets::make_memory_database, config::Config, game::GameInstance, GameLauncher};
 
 pub fn main() {
     GameLauncher::new(
@@ -11,7 +9,7 @@ pub fn main() {
             *assets = make_memory_database(include_bytes!("../../assets.pack")).unwrap();
         }),
     )
-    .title("Micro Game")
+    .title("Quaso")
     .config(
         Config::load_from_str(include_str!("../../assets/GameConfig.toml"))
             .expect("Could not load Game Config!"),

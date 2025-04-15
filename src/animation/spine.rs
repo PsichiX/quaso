@@ -1,7 +1,7 @@
 use crate::assets::spine::SpineAsset;
 use rusty_spine::{
-    controller::{SkeletonCombinedRenderable, SkeletonController},
     AnimationEvent, AnimationStateData, BlendMode, Physics,
+    controller::{SkeletonCombinedRenderable, SkeletonController},
 };
 use spitfire_core::Triangle;
 use spitfire_draw::{
@@ -19,8 +19,8 @@ use std::{
     collections::{HashMap, HashSet},
     error::Error,
     sync::{
-        mpsc::{channel, Receiver},
         Arc, RwLock, RwLockReadGuard, RwLockWriteGuard,
+        mpsc::{Receiver, channel},
     },
 };
 use vek::{Quaternion, Transform, Vec3};

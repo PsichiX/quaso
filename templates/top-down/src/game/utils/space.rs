@@ -1,5 +1,5 @@
 use crate::game::{enemy::EnemyState, item::Item};
-use micro_games_kit::third_party::{
+use quaso::third_party::{
     raui_core::{Managed, ManagedRef, ManagedRefMut},
     rstar::{Envelope, Point, PointDistance, RTree, RTreeObject, AABB},
     typid::ID,

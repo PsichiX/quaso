@@ -8,9 +8,7 @@ pub mod ui;
 pub mod utils;
 
 use self::states::preloader::Preloader;
-use micro_games_kit::{
-    assets::make_memory_database, config::Config, game::GameInstance, GameLauncher,
-};
+use quaso::{assets::make_memory_database, config::Config, game::GameInstance, GameLauncher};
 
 pub fn main() {
     GameLauncher::new(GameInstance::new(Preloader).setup_assets(|assets| {

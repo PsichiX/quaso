@@ -2,7 +2,7 @@ pub mod health_bar;
 pub mod text_button;
 
 use super::utils::world_to_screen_anchor;
-use micro_games_kit::{
+use quaso::{
     context::GameContext,
     third_party::{
         raui_immediate_widgets::{

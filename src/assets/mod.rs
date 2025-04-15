@@ -9,10 +9,10 @@ use crate::assets::{
     spine::SpineAssetProtocol, texture::TextureAssetProtocol,
 };
 use keket::{
-    database::{path::AssetPath, AssetDatabase},
+    database::{AssetDatabase, path::AssetPath},
     fetch::{
-        container::{ContainerAssetFetch, ContainerPartialFetch},
         AssetFetch,
+        container::{ContainerAssetFetch, ContainerPartialFetch},
     },
     protocol::{bytes::BytesAssetProtocol, group::GroupAssetProtocol, text::TextAssetProtocol},
 };

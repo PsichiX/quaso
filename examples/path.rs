@@ -1,4 +1,5 @@
-use micro_games_kit::{
+use quaso::{
+    GameLauncher,
     assets::{make_directory_database, shader::ShaderAsset},
     config::Config,
     context::GameContext,
@@ -15,7 +16,6 @@ use micro_games_kit::{
         },
         vek::{Rgba, Vec2},
     },
-    GameLauncher,
 };
 use std::error::Error;
 

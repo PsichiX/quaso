@@ -1,10 +1,10 @@
-# Micro Games Kit
+# Quaso
 
 Toolset for making Micro Games quickly
 
 ## Create new project from template
 
-- Download project template from GitHub latest release: <https://github.com/MicroRaptorHub/micro-games-kit/releases/latest>
+- Download project template from GitHub latest release: <https://github.com/PsichiX/quaso/releases/latest>
 
 - Make sure you have installed [Project Forge](https://github.com/PsichiX/project-forge) CLI app and run it with:
 

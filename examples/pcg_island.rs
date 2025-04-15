@@ -1,4 +1,5 @@
-use micro_games_kit::{
+use quaso::{
+    GameLauncher,
     assets::{make_directory_database, shader::ShaderAsset},
     config::Config,
     context::GameContext,
@@ -8,7 +9,7 @@ use micro_games_kit::{
     third_party::{
         noise::{Fbm, MultiFractal, NoiseFn, SuperSimplex},
         raui_immediate_widgets::core::{
-            text_box, TextBoxFont, TextBoxHorizontalAlign, TextBoxProps,
+            TextBoxFont, TextBoxHorizontalAlign, TextBoxProps, text_box,
         },
         spitfire_draw::{
             tiles::{TileInstance, TileMap, TileSet, TileSetItem, TilesEmitter},
@@ -18,7 +19,6 @@ use micro_games_kit::{
         spitfire_input::{ArrayInputCombinator, InputAxisRef, InputMapping, VirtualAxis},
         vek::{Rgba, Vec2},
     },
-    GameLauncher,
 };
 use std::{
     array::from_fn,

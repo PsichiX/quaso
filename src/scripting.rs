@@ -1,9 +1,8 @@
 use intuicio_backend_vm::scope::VmScope;
 use intuicio_core::{context::Context, host::Host, registry::Registry};
 use intuicio_frontend_simpleton::{
-    library,
+    Reference, Type, library,
     script::{SimpletonModule, SimpletonPackage, SimpletonScriptExpression},
-    Reference, Type,
 };
 use serde::{Deserialize, Serialize};
 

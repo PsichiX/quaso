@@ -1,7 +1,7 @@
 pub mod events;
 pub mod space;
 
-use micro_games_kit::{context::GameContext, third_party::vek::Vec2};
+use quaso::{context::GameContext, third_party::vek::Vec2};
 
 pub fn world_to_screen(position: Vec2<f32>, context: &GameContext) -> Vec2<f32> {
     context

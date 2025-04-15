@@ -1,4 +1,4 @@
-use micro_games_kit::{
+use quaso::{
     assets::shader::ShaderAsset,
     context::GameContext,
     game::{GameState, GameStateChange},
