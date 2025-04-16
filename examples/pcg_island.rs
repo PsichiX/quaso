@@ -274,9 +274,13 @@ fn remap<T: Copy + Sub<Output = T> + Div<Output = T> + Add<Output = T> + Mul<Out
 }
 
 fn main() -> Result<(), Box<dyn Error>> {
-    GameLauncher::new(GameInstance::new(State::default()).setup_assets(|assets| {
-        *assets = make_directory_database("./resources/").unwrap();
-    }))
+    GameLauncher::new(
+        GameInstance::new(State::default())
+            .with_unfocused_fixed_time_step_scale(15.0)
+            .setup_assets(|assets| {
+                *assets = make_directory_database("./resources/").unwrap();
+            }),
+    )
     .title("Procedural Content Generator - Island")
     .config(Config::load_from_file("./resources/GameConfig.toml")?)
     .run();

@@ -7,7 +7,10 @@ use crate::{
     context::GameContext,
 };
 #[cfg(not(target_arch = "wasm32"))]
-use glutin::{event::Event, window::Window};
+use glutin::{
+    event::{Event, WindowEvent},
+    window::Window,
+};
 #[cfg(target_arch = "wasm32")]
 use instant::Instant;
 use keket::database::AssetDatabase;
@@ -26,7 +29,10 @@ use std::{
     collections::HashMap,
 };
 #[cfg(target_arch = "wasm32")]
-use winit::{event::Event, window::Window};
+use winit::{
+    event::{Event, WindowEvent},
+    window::Window,
+};
 
 pub trait GameObject {
     #[allow(unused_variables)]
@@ -64,6 +70,8 @@ pub trait GameState {
     fn draw(&mut self, context: GameContext) {}
 
     fn draw_gui(&mut self, context: GameContext) {}
+
+    fn event(&mut self, globals: &mut GameGlobals, event: &Event<()>) {}
 }
 
 pub trait GameSubsystem {
@@ -102,6 +110,7 @@ impl GameGlobals {
 
 pub struct GameInstance {
     pub fixed_delta_time: f32,
+    pub unfocused_fixed_delta_time_scale: f32,
     pub color_shader: &'static str,
     pub image_shader: &'static str,
     pub text_shader: &'static str,
@@ -117,12 +126,14 @@ pub struct GameInstance {
     state_change: GameStateChange,
     subsystems: Vec<Box<dyn GameSubsystem>>,
     globals: GameGlobals,
+    focused: bool,
 }
 
 impl Default for GameInstance {
     fn default() -> Self {
         Self {
             fixed_delta_time: 1.0 / 60.0,
+            unfocused_fixed_delta_time_scale: 1.0,
             color_shader: "color",
             image_shader: "image",
             text_shader: "text",
@@ -143,6 +154,7 @@ impl Default for GameInstance {
                 Box::new(SoundAssetSubsystem),
             ],
             globals: Default::default(),
+            focused: true,
         }
     }
 }
@@ -162,6 +174,11 @@ impl GameInstance {
 
     pub fn with_fps(mut self, frames_per_second: usize) -> Self {
         self.set_fps(frames_per_second);
+        self
+    }
+
+    pub fn with_unfocused_fixed_time_step_scale(mut self, value: f32) -> Self {
+        self.unfocused_fixed_delta_time_scale = value;
         self
     }
 
@@ -246,7 +263,12 @@ impl GameInstance {
         }
 
         let fixed_delta_time = self.fixed_timer.elapsed().as_secs_f32();
-        let fixed_step = if fixed_delta_time > self.fixed_delta_time {
+        let fixed_delta_time_limit = if self.focused {
+            self.fixed_delta_time
+        } else {
+            self.fixed_delta_time * self.unfocused_fixed_delta_time_scale
+        };
+        let fixed_step = if fixed_delta_time > fixed_delta_time_limit {
             self.fixed_timer = Instant::now();
             if let Some(state) = self.states.last_mut() {
                 state.fixed_update(
@@ -370,7 +392,13 @@ impl GameInstance {
 
     pub fn process_event(&mut self, event: &Event<()>) -> bool {
         if let Event::WindowEvent { event, .. } = event {
+            if let WindowEvent::Focused(focused) = &event {
+                self.focused = *focused;
+            }
             self.input.on_event(event);
+        }
+        if let Some(state) = self.states.last_mut() {
+            state.event(&mut self.globals, event);
         }
         !self.states.is_empty() || !matches!(self.state_change, GameStateChange::Continue)
     }
