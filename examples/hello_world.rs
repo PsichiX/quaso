@@ -29,6 +29,16 @@ use std::error::Error;
 
 const SPEED: f32 = 100.0;
 
+fn main() -> Result<(), Box<dyn Error>> {
+    GameLauncher::new(GameInstance::new(Preloader).setup_assets(|assets| {
+        *assets = make_directory_database("./resources/").unwrap();
+    }))
+    .title("Hello World!")
+    .config(Config::load_from_file("./resources/GameConfig.toml")?)
+    .run();
+    Ok(())
+}
+
 #[derive(Default)]
 struct Preloader;
 
@@ -163,14 +173,4 @@ impl GameState for State {
             ..Default::default()
         });
     }
-}
-
-fn main() -> Result<(), Box<dyn Error>> {
-    GameLauncher::new(GameInstance::new(Preloader).setup_assets(|assets| {
-        *assets = make_directory_database("./resources/").unwrap();
-    }))
-    .title("Hello World!")
-    .config(Config::load_from_file("./resources/GameConfig.toml")?)
-    .run();
-    Ok(())
 }

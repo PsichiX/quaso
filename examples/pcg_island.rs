@@ -39,6 +39,20 @@ const CLEAR_SKY: usize = 0;
 const CLOUD_SKY: usize = 1;
 const RAINY_SKY: usize = 2;
 
+fn main() -> Result<(), Box<dyn Error>> {
+    GameLauncher::new(
+        GameInstance::new(State::default())
+            .with_unfocused_fixed_time_step_scale(15.0)
+            .setup_assets(|assets| {
+                *assets = make_directory_database("./resources/").unwrap();
+            }),
+    )
+    .title("Procedural Content Generator - Island")
+    .config(Config::load_from_file("./resources/GameConfig.toml")?)
+    .run();
+    Ok(())
+}
+
 struct State {
     world: GridWorld,
     weather_tileset: TileSet,
@@ -271,18 +285,4 @@ fn remap<T: Copy + Sub<Output = T> + Div<Output = T> + Add<Output = T> + Mul<Out
     let to_end = *to.end();
     let factor = (value - from_start) / (from_end - from_start);
     (to_end - to_start) * factor + to_start
-}
-
-fn main() -> Result<(), Box<dyn Error>> {
-    GameLauncher::new(
-        GameInstance::new(State::default())
-            .with_unfocused_fixed_time_step_scale(15.0)
-            .setup_assets(|assets| {
-                *assets = make_directory_database("./resources/").unwrap();
-            }),
-    )
-    .title("Procedural Content Generator - Island")
-    .config(Config::load_from_file("./resources/GameConfig.toml")?)
-    .run();
-    Ok(())
 }

@@ -19,6 +19,16 @@ use quaso::{
 };
 use std::error::Error;
 
+fn main() -> Result<(), Box<dyn Error>> {
+    GameLauncher::new(GameInstance::new(State::default()).setup_assets(|assets| {
+        *assets = make_directory_database("./resources/").unwrap();
+    }))
+    .title("Path")
+    .config(Config::load_from_file("./resources/GameConfig.toml")?)
+    .run();
+    Ok(())
+}
+
 struct State {
     spline: Spline<[f32; 2]>,
     mouse_xy: Option<ArrayInputCombinator<2>>,
@@ -120,14 +130,4 @@ impl GameState for State {
                 .draw(context.draw, context.graphics);
         }
     }
-}
-
-fn main() -> Result<(), Box<dyn Error>> {
-    GameLauncher::new(GameInstance::new(State::default()).setup_assets(|assets| {
-        *assets = make_directory_database("./resources/").unwrap();
-    }))
-    .title("Path")
-    .config(Config::load_from_file("./resources/GameConfig.toml")?)
-    .run();
-    Ok(())
 }

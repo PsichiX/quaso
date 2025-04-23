@@ -22,6 +22,16 @@ use vek::Vec2;
 
 const SPEED: f32 = 200.0;
 
+fn main() -> Result<(), Box<dyn Error>> {
+    GameLauncher::new(GameInstance::new(Preloader).setup_assets(|assets| {
+        *assets = make_directory_database("./resources/").unwrap();
+    }))
+    .title("Spine 2D")
+    .config(Config::load_from_file("./resources/GameConfig.toml")?)
+    .run();
+    Ok(())
+}
+
 #[derive(Default)]
 struct Preloader;
 
@@ -201,14 +211,4 @@ impl GameState for State {
         };
         skeleton.draw(context.draw, context.graphics);
     }
-}
-
-fn main() -> Result<(), Box<dyn Error>> {
-    GameLauncher::new(GameInstance::new(Preloader).setup_assets(|assets| {
-        *assets = make_directory_database("./resources/").unwrap();
-    }))
-    .title("Spine 2D")
-    .config(Config::load_from_file("./resources/GameConfig.toml")?)
-    .run();
-    Ok(())
 }

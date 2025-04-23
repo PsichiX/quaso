@@ -37,6 +37,19 @@ script_contents!(SCRIPTS => "../resources/player.simp");
 
 const SPEED: f32 = 100.0;
 
+fn main() -> Result<(), Box<dyn Error>> {
+    // Create global scriptable host from script contents.
+    create_host(Default::default(), SCRIPTS, []);
+
+    GameLauncher::new(GameInstance::new(Preloader).setup_assets(|assets| {
+        *assets = make_directory_database("./resources/").unwrap();
+    }))
+    .title("Scripting")
+    .config(Config::load_from_file("./resources/GameConfig.toml")?)
+    .run();
+    Ok(())
+}
+
 #[derive(Default)]
 struct GameObject {
     pub sprite: Sprite,
@@ -251,17 +264,4 @@ impl GameState for State {
             ..Default::default()
         });
     }
-}
-
-fn main() -> Result<(), Box<dyn Error>> {
-    // Create global scriptable host from script contents.
-    create_host(Default::default(), SCRIPTS, []);
-
-    GameLauncher::new(GameInstance::new(Preloader).setup_assets(|assets| {
-        *assets = make_directory_database("./resources/").unwrap();
-    }))
-    .title("Scripting")
-    .config(Config::load_from_file("./resources/GameConfig.toml")?)
-    .run();
-    Ok(())
 }
