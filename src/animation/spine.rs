@@ -288,6 +288,7 @@ impl SpineSkeleton {
                     BlendMode::Screen => GlowBlending::Additive,
                 },
                 scissor: None,
+                wireframe: false,
             };
             graphics.stream.batch_optimized(batch);
             graphics.stream.extend(
