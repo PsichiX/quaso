@@ -20,6 +20,7 @@ pub mod third_party {
     pub use nodio;
     pub use noise;
     pub use rand;
+    pub use randscape;
     pub use raui_core;
     pub use raui_immediate;
     pub use raui_immediate_widgets;
@@ -51,7 +52,6 @@ pub mod context;
 pub mod game;
 pub mod gamepad;
 pub mod grid_world;
-pub mod pcg;
 pub mod scripting;
 pub mod tag;
 

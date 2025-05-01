@@ -3,7 +3,7 @@ members = ["templates/*"]
 
 [package]
 name = "quaso"
-version = "0.35.3"
+version = "0.36.0"
 edition = "2024"
 authors = ["Patryk 'PsichiX' Budzynski <psichix@gmail.com>"]
 description = "Toolset for making Micro Games quickly"
@@ -29,6 +29,7 @@ intuicio-core = "0.45"
 intuicio-derive = "0.45"
 intuicio-backend-vm = "0.45"
 intuicio-frontend-simpleton = { version = "0.45", default-features = false }
+randscape = "0.1"
 anput = "0.11"
 nodio = "0.4"
 keket = "0.14"

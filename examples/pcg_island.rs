@@ -5,9 +5,9 @@ use quaso::{
     context::GameContext,
     game::{GameInstance, GameState},
     grid_world::{GridWorld, GridWorldLayer},
-    pcg::{Grid, NoiseGenerator, RemapGenerator, SubGenerator},
     third_party::{
         noise::{Fbm, MultiFractal, NoiseFn, SuperSimplex},
+        randscape::{Grid, NoiseGenerator, RemapGenerator, SubGenerator},
         raui_immediate_widgets::core::{
             TextBoxFont, TextBoxHorizontalAlign, TextBoxProps, text_box,
         },

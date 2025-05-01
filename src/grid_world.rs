@@ -1,4 +1,4 @@
-use crate::pcg::Grid;
+use randscape::Grid;
 use spitfire_draw::{
     context::DrawContext,
     tiles::{TileInstance, TileMap, TileSet, TilesEmitter},
