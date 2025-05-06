@@ -3,7 +3,7 @@ members = ["templates/*"]
 
 [package]
 name = "quaso"
-version = "0.36.1"
+version = "0.37.0"
 edition = "2024"
 authors = ["Patryk 'PsichiX' Budzynski <psichix@gmail.com>"]
 description = "Toolset for making Micro Games quickly"
@@ -15,15 +15,16 @@ readme = "README.md"
 exclude = ["resources/", "templates/"]
 
 [dependencies]
-spitfire-core = "0.32"
-spitfire-glow = "0.32"
-spitfire-fontdue = "0.32"
-spitfire-draw = "0.32"
-spitfire-input = "0.32"
-spitfire-gui = "0.32"
-raui-core = "0.68"
-raui-immediate = "0.68"
-raui-immediate-widgets = "0.68"
+spitfire-core = "0.33"
+spitfire-glow = "0.33"
+spitfire-fontdue = "0.33"
+spitfire-draw = "0.33"
+spitfire-input = "0.33"
+spitfire-gui = "0.33"
+raui-core = "0.69"
+raui-material = "0.69"
+raui-immediate = "0.69"
+raui-immediate-widgets = "0.69"
 intuicio-data = "0.45"
 intuicio-core = "0.45"
 intuicio-derive = "0.45"

@@ -11,10 +11,10 @@ name = "game_web"
 crate-type = ["cdylib"]
 
 [dependencies.quaso]
-version = "0.36"
+version = "0.37"
 
 [build-dependencies.quaso]
-version = "0.36"
+version = "0.37"
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 wasm-bindgen = "0.2"

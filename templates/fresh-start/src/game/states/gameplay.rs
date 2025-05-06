@@ -3,11 +3,15 @@ use quaso::{
     context::GameContext,
     game::{GameState, GameStateChange},
     third_party::{
-        raui_core::layout::CoordsMappingScaling,
-        raui_immediate_widgets::core::{
-            text_box, Color, TextBoxFont, TextBoxHorizontalAlign, TextBoxProps,
-            TextBoxVerticalAlign,
+        raui_core::{
+            layout::CoordsMappingScaling,
+            widget::{
+                component::text_box::TextBoxProps,
+                unit::text::{TextBoxFont, TextBoxHorizontalAlign, TextBoxVerticalAlign},
+                utils::Color,
+            },
         },
+        raui_immediate_widgets::core::text_box,
         spitfire_draw::{
             sprite::{Sprite, SpriteTexture},
             utils::{Drawable, TextureRef},

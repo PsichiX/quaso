@@ -24,6 +24,7 @@ pub mod third_party {
     pub use raui_core;
     pub use raui_immediate;
     pub use raui_immediate_widgets;
+    pub use raui_material;
     pub use rstar;
     pub use rusty_spine;
     pub use serde;

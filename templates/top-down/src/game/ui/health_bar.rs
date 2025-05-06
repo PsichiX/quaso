@@ -1,9 +1,16 @@
 use quaso::third_party::{
-    raui_core::props::Props,
-    raui_immediate_widgets::core::{
-        containers::content_box, image_box, Color, ContentBoxItemLayout, ImageBoxFrame,
-        ImageBoxImage, ImageBoxImageScaling, ImageBoxMaterial, ImageBoxProps, Rect,
+    raui_core::{
+        props::Props,
+        widget::{
+            component::image_box::ImageBoxProps,
+            unit::{
+                content::ContentBoxItemLayout,
+                image::{ImageBoxFrame, ImageBoxImage, ImageBoxImageScaling, ImageBoxMaterial},
+            },
+            utils::{Color, Rect},
+        },
     },
+    raui_immediate_widgets::core::{containers::content_box, image_box},
 };
 
 pub fn health_bar(props: impl Into<Props>, value: usize) {

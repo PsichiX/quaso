@@ -7,6 +7,7 @@ format:
 
 build:
     cargo build
+    cargo build --examples
 
 build-wasm:
     cargo build --target wasm32-unknown-unknown

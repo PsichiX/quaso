@@ -22,10 +22,15 @@ use quaso::{
     third_party::{
         kira::sound::static_sound::StaticSoundHandle,
         rand::{thread_rng, Rng},
-        raui_core::layout::CoordsMappingScaling,
-        raui_immediate_widgets::core::{
-            text_box, Color, ContentBoxItemLayout, Rect, TextBoxFont, TextBoxProps,
+        raui_core::{
+            layout::CoordsMappingScaling,
+            widget::{
+                component::text_box::TextBoxProps,
+                unit::{content::ContentBoxItemLayout, text::TextBoxFont},
+                utils::{Color, Rect},
+            },
         },
+        raui_immediate_widgets::core::text_box,
         spitfire_draw::{
             canvas::Canvas,
             sprite::{Sprite, SpriteTexture},

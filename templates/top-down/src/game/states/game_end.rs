@@ -7,15 +7,23 @@ use quaso::{
     context::GameContext,
     game::{GameState, GameStateChange},
     third_party::{
+        raui_core::widget::{
+            component::image_box::ImageBoxProps,
+            unit::{
+                flex::FlexBoxItemLayout,
+                image::{ImageBoxAspectRatio, ImageBoxImage, ImageBoxMaterial},
+                text::TextBoxVerticalAlign,
+            },
+        },
         raui_immediate::apply_shared_props,
         raui_immediate_widgets::{
             core::{
                 containers::{horizontal_box, nav_vertical_box},
-                image_box, FlexBoxItemLayout, ImageBoxAspectRatio, ImageBoxImage, ImageBoxMaterial,
-                ImageBoxProps, TextBoxVerticalAlign,
+                image_box,
             },
-            material::{text_paper, TextPaperProps},
+            material::text_paper,
         },
+        raui_material::component::text_paper::TextPaperProps,
     },
 };
 use std::fmt::Display;

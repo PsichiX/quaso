@@ -5,15 +5,17 @@ use super::utils::world_to_screen_anchor;
 use quaso::{
     context::GameContext,
     third_party::{
-        raui_immediate_widgets::{
-            core::{
-                ContentBoxItemLayout, ImageBoxFrame, ImageBoxImage, ImageBoxImageScaling, Rect,
-                TextBoxFont, TextBoxHorizontalAlign, TextBoxVerticalAlign,
+        raui_core::widget::{
+            unit::{
+                content::ContentBoxItemLayout,
+                image::{ImageBoxFrame, ImageBoxImage, ImageBoxImageScaling},
+                text::{TextBoxFont, TextBoxHorizontalAlign, TextBoxVerticalAlign},
             },
-            material::theme::{
-                new_all_white_theme, ThemeProps, ThemedButtonMaterial, ThemedImageMaterial,
-                ThemedTextMaterial,
-            },
+            utils::Rect,
+        },
+        raui_material::theme::{
+            new_all_white_theme, ThemeProps, ThemedButtonMaterial, ThemedImageMaterial,
+            ThemedTextMaterial,
         },
         vek::Vec2,
     },
