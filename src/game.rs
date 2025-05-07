@@ -18,7 +18,11 @@ use spitfire_draw::{
     context::DrawContext,
     utils::{ShaderRef, Vertex},
 };
-use spitfire_glow::{app::AppState, graphics::Graphics, renderer::GlowBlending};
+use spitfire_glow::{
+    app::{AppControl, AppState},
+    graphics::Graphics,
+    renderer::GlowBlending,
+};
 use spitfire_gui::context::GuiContext;
 use spitfire_input::InputContext;
 #[cfg(not(target_arch = "wasm32"))]
@@ -405,7 +409,7 @@ impl GameInstance {
 }
 
 impl AppState<Vertex> for GameInstance {
-    fn on_redraw(&mut self, graphics: &mut Graphics<Vertex>) {
+    fn on_redraw(&mut self, graphics: &mut Graphics<Vertex>, _: &mut AppControl) {
         self.process_frame(graphics);
     }
 
