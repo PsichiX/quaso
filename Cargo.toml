@@ -3,7 +3,7 @@ members = ["templates/*"]
 
 [package]
 name = "quaso"
-version = "0.37.2"
+version = "0.37.3"
 edition = "2024"
 authors = ["Patryk 'PsichiX' Budzynski <psichix@gmail.com>"]
 description = "Toolset for making Micro Games quickly"
@@ -25,11 +25,11 @@ raui-core = "0.70"
 raui-material = "0.70"
 raui-immediate = "0.70"
 raui-immediate-widgets = "0.70"
-intuicio-data = "0.45"
-intuicio-core = "0.45"
-intuicio-derive = "0.45"
-intuicio-backend-vm = "0.45"
-intuicio-frontend-simpleton = { version = "0.45", default-features = false }
+intuicio-data = "0.46"
+intuicio-core = "0.46"
+intuicio-derive = "0.46"
+intuicio-backend-vm = "0.46"
+intuicio-frontend-simpleton = { version = "0.46", default-features = false }
 randscape = "0.1"
 anput = "0.12"
 nodio = "0.4"
