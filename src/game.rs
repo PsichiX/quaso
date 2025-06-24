@@ -5,6 +5,10 @@ use crate::{
     },
     audio::Audio,
     context::GameContext,
+    coroutine::AsyncNextFrame,
+};
+use anput_jobs::{
+    AllJobsHandle, JobContext, JobHandle, JobLocation, JobPriority, Jobs, ScopedJobs,
 };
 #[cfg(not(target_arch = "wasm32"))]
 use glutin::{
@@ -112,6 +116,76 @@ impl GameGlobals {
     }
 }
 
+#[derive(Default)]
+pub struct GameJobs {
+    jobs: Jobs,
+}
+
+impl GameJobs {
+    pub fn defer<T: Send>(
+        &self,
+        job: impl Future<Output = T> + Send + Sync + 'static,
+    ) -> JobHandle<T> {
+        self.spawn_on(JobLocation::Local, JobPriority::Normal, job)
+    }
+
+    pub fn spawn_on<T: Send>(
+        &self,
+        location: JobLocation,
+        priority: JobPriority,
+        job: impl Future<Output = T> + Send + Sync + 'static,
+    ) -> JobHandle<T> {
+        self.jobs.spawn_on(location, priority, job).unwrap()
+    }
+
+    pub fn scoped_spawn<T: Send + 'static>(
+        &self,
+        job: impl Future<Output = T> + Send + Sync,
+    ) -> Option<T> {
+        let mut scope = ScopedJobs::<T>::new(&self.jobs);
+        let _ = scope.spawn_on(
+            JobLocation::other_than_current_thread(),
+            JobPriority::High,
+            job,
+        );
+        scope.execute().pop()
+    }
+
+    pub fn broadcast<T: Send>(
+        &self,
+        job: impl Fn(JobContext) -> T + Send + Sync + 'static,
+    ) -> AllJobsHandle<T> {
+        self.jobs.broadcast(job).unwrap()
+    }
+
+    pub fn scoped_broadcast<T: Send + 'static>(
+        &self,
+        job: impl Fn(JobContext) -> T + Send + Sync,
+    ) -> Vec<T> {
+        let mut scope = ScopedJobs::<T>::new(&self.jobs);
+        let _ = scope.broadcast(job);
+        scope.execute()
+    }
+
+    pub fn broadcast_n<T: Send>(
+        &self,
+        work_groups: usize,
+        job: impl Fn(JobContext) -> T + Send + Sync + 'static,
+    ) -> AllJobsHandle<T> {
+        self.jobs.broadcast_n(work_groups, job).unwrap()
+    }
+
+    pub fn scoped_broadcast_n<T: Send + 'static>(
+        &self,
+        work_groups: usize,
+        job: impl Fn(JobContext) -> T + Send + Sync,
+    ) -> Vec<T> {
+        let mut scope = ScopedJobs::<T>::new(&self.jobs);
+        let _ = scope.broadcast_n(work_groups, job);
+        scope.execute()
+    }
+}
+
 pub struct GameInstance {
     pub fixed_delta_time: f32,
     pub unfocused_fixed_delta_time_scale: f32,
@@ -130,7 +204,9 @@ pub struct GameInstance {
     state_change: GameStateChange,
     subsystems: Vec<Box<dyn GameSubsystem>>,
     globals: GameGlobals,
+    jobs: GameJobs,
     focused: bool,
+    async_next_frame: AsyncNextFrame,
 }
 
 impl Default for GameInstance {
@@ -158,7 +234,9 @@ impl Default for GameInstance {
                 Box::new(SoundAssetSubsystem),
             ],
             globals: Default::default(),
+            jobs: Default::default(),
             focused: true,
+            async_next_frame: Default::default(),
         }
     }
 }
@@ -216,6 +294,11 @@ impl GameInstance {
         self
     }
 
+    pub fn with_jobs_named_worker(mut self, name: impl ToString) -> Self {
+        self.jobs.jobs.add_named_worker(name);
+        self
+    }
+
     pub fn setup_assets(mut self, f: impl FnOnce(&mut AssetDatabase)) -> Self {
         f(&mut self.assets);
         self
@@ -231,6 +314,7 @@ impl GameInstance {
 
     pub fn process_frame(&mut self, graphics: &mut Graphics<Vertex>) {
         let delta_time = self.timer.elapsed().as_secs_f32();
+        self.async_next_frame.tick();
 
         for subsystem in &mut self.subsystems {
             subsystem.run(
@@ -243,11 +327,14 @@ impl GameInstance {
                     assets: &mut self.assets,
                     audio: &mut self.audio,
                     globals: &mut self.globals,
+                    jobs: &mut self.jobs,
+                    async_next_frame: &self.async_next_frame,
                 },
                 delta_time,
             );
         }
         self.assets.maintain().unwrap();
+        self.jobs.jobs.run_local();
 
         if let Some(state) = self.states.last_mut() {
             self.timer = Instant::now();
@@ -261,6 +348,8 @@ impl GameInstance {
                     assets: &mut self.assets,
                     audio: &mut self.audio,
                     globals: &mut self.globals,
+                    jobs: &mut self.jobs,
+                    async_next_frame: &self.async_next_frame,
                 },
                 delta_time,
             );
@@ -285,6 +374,8 @@ impl GameInstance {
                         assets: &mut self.assets,
                         audio: &mut self.audio,
                         globals: &mut self.globals,
+                        jobs: &mut self.jobs,
+                        async_next_frame: &self.async_next_frame,
                     },
                     fixed_delta_time,
                 );
@@ -307,6 +398,8 @@ impl GameInstance {
                 assets: &mut self.assets,
                 audio: &mut self.audio,
                 globals: &mut self.globals,
+                jobs: &mut self.jobs,
+                async_next_frame: &self.async_next_frame,
             });
         }
         self.gui.begin_frame();
@@ -320,6 +413,8 @@ impl GameInstance {
                 assets: &mut self.assets,
                 audio: &mut self.audio,
                 globals: &mut self.globals,
+                jobs: &mut self.jobs,
+                async_next_frame: &self.async_next_frame,
             });
         }
         self.gui.end_frame(
@@ -347,6 +442,8 @@ impl GameInstance {
                         assets: &mut self.assets,
                         audio: &mut self.audio,
                         globals: &mut self.globals,
+                        jobs: &mut self.jobs,
+                        async_next_frame: &self.async_next_frame,
                     });
                 }
                 state.enter(GameContext {
@@ -358,6 +455,8 @@ impl GameInstance {
                     assets: &mut self.assets,
                     audio: &mut self.audio,
                     globals: &mut self.globals,
+                    jobs: &mut self.jobs,
+                    async_next_frame: &self.async_next_frame,
                 });
                 self.states.push(state);
                 self.timer = Instant::now();
@@ -372,6 +471,8 @@ impl GameInstance {
                     assets: &mut self.assets,
                     audio: &mut self.audio,
                     globals: &mut self.globals,
+                    jobs: &mut self.jobs,
+                    async_next_frame: &self.async_next_frame,
                 });
                 self.states.push(state);
                 self.timer = Instant::now();
@@ -387,6 +488,8 @@ impl GameInstance {
                         assets: &mut self.assets,
                         audio: &mut self.audio,
                         globals: &mut self.globals,
+                        jobs: &mut self.jobs,
+                        async_next_frame: &self.async_next_frame,
                     });
                 }
                 self.timer = Instant::now();

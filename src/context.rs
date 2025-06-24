@@ -1,6 +1,7 @@
 use crate::{
     audio::Audio,
-    game::{GameGlobals, GameStateChange},
+    coroutine::AsyncNextFrame,
+    game::{GameGlobals, GameJobs, GameStateChange},
 };
 use keket::database::AssetDatabase;
 use spitfire_draw::{context::DrawContext, utils::Vertex};
@@ -17,4 +18,6 @@ pub struct GameContext<'a> {
     pub assets: &'a mut AssetDatabase,
     pub audio: &'a mut Audio,
     pub globals: &'a mut GameGlobals,
+    pub jobs: &'a mut GameJobs,
+    pub async_next_frame: &'a AsyncNextFrame,
 }

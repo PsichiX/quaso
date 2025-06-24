@@ -1,6 +1,7 @@
 pub mod third_party {
     pub use anim8;
     pub use anput;
+    pub use anput_jobs;
     pub use emergent;
     pub use fontdue;
     pub use getrandom;
@@ -50,6 +51,7 @@ pub mod audio;
 pub mod character;
 pub mod config;
 pub mod context;
+pub mod coroutine;
 pub mod game;
 pub mod gamepad;
 pub mod grid_world;
