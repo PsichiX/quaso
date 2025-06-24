@@ -8,6 +8,11 @@ use quaso::{
     third_party::{
         noise::{Fbm, MultiFractal, NoiseFn, SuperSimplex},
         randscape::{Grid, NoiseGenerator, RemapGenerator, SubGenerator},
+        raui_core::widget::{
+            component::text_box::TextBoxProps,
+            unit::text::{TextBoxFont, TextBoxHorizontalAlign},
+        },
+        raui_immediate_widgets::core::text_box,
         spitfire_draw::{
             tiles::{TileInstance, TileMap, TileSet, TileSetItem, TilesEmitter},
             utils::{Drawable, ShaderRef},
@@ -17,11 +22,6 @@ use quaso::{
         vek::{Rgba, Vec2},
     },
 };
-use raui_core::widget::{
-    component::text_box::TextBoxProps,
-    unit::text::{TextBoxFont, TextBoxHorizontalAlign},
-};
-use raui_immediate_widgets::core::text_box;
 use std::{
     array::from_fn,
     error::Error,

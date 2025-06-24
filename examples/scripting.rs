@@ -1,4 +1,3 @@
-use intuicio_frontend_simpleton::Real;
 use quaso::{
     GameLauncher,
     assets::{make_directory_database, shader::ShaderAsset},
@@ -8,8 +7,14 @@ use quaso::{
     script_contents,
     scripting::{call_object, create_host, get, new_init, new_typed, set},
     third_party::{
-        intuicio_frontend_simpleton::Reference,
+        intuicio_frontend_simpleton::{Real, Reference},
         raui_core::layout::CoordsMappingScaling,
+        raui_core::widget::{
+            component::text_box::TextBoxProps,
+            unit::text::{TextBoxFont, TextBoxHorizontalAlign, TextBoxVerticalAlign},
+            utils::Color,
+        },
+        raui_immediate_widgets::core::text_box,
         spitfire_draw::{
             sprite::{Sprite, SpriteTexture},
             utils::{Drawable, TextureRef},
@@ -25,12 +30,6 @@ use quaso::{
         windowing::event::VirtualKeyCode,
     },
 };
-use raui_core::widget::{
-    component::text_box::TextBoxProps,
-    unit::text::{TextBoxFont, TextBoxHorizontalAlign, TextBoxVerticalAlign},
-    utils::Color,
-};
-use raui_immediate_widgets::core::text_box;
 use std::error::Error;
 
 // We define scripts by including them into application in constant,

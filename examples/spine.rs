@@ -1,4 +1,3 @@
-use glutin::event::VirtualKeyCode;
 use quaso::{
     GameLauncher,
     animation::spine::{
@@ -12,13 +11,14 @@ use quaso::{
     third_party::{
         spitfire_draw::utils::Drawable,
         spitfire_glow::graphics::{CameraScaling, Shader},
+        spitfire_input::{
+            CardinalInputCombinator, InputActionRef, InputConsume, InputMapping, VirtualAction,
+        },
+        vek::Vec2,
+        windowing::event::VirtualKeyCode,
     },
 };
-use spitfire_input::{
-    CardinalInputCombinator, InputActionRef, InputConsume, InputMapping, VirtualAction,
-};
 use std::error::Error;
-use vek::Vec2;
 
 const SPEED: f32 = 200.0;
 

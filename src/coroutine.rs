@@ -1,3 +1,5 @@
+use crate::context::AsyncGameContext;
+use anput_jobs::coroutine::meta;
 use std::{
     pin::Pin,
     sync::{
@@ -35,4 +37,18 @@ impl Future for AsyncNextFrame {
             Poll::Ready(())
         }
     }
+}
+
+pub async fn async_game_context<'a>() -> Option<AsyncGameContext<'a>> {
+    meta::<AsyncGameContext>("context")
+        .await
+        .and_then(|context| unsafe { context.as_mut_ptr() })
+        .and_then(|context| unsafe { context.as_mut() }.map(AsyncGameContext::fork))
+}
+
+pub async fn async_delta_time() -> f32 {
+    meta("delta_time")
+        .await
+        .and_then(|dt| dt.read().map(|dt| *dt))
+        .unwrap_or_default()
 }

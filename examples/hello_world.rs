@@ -5,7 +5,15 @@ use quaso::{
     context::GameContext,
     game::{GameInstance, GameState, GameStateChange},
     third_party::{
-        raui_core::layout::CoordsMappingScaling,
+        raui_core::{
+            layout::CoordsMappingScaling,
+            widget::{
+                component::text_box::TextBoxProps,
+                unit::text::{TextBoxFont, TextBoxHorizontalAlign, TextBoxVerticalAlign},
+                utils::Color,
+            },
+        },
+        raui_immediate_widgets::core::text_box,
         spitfire_draw::{
             sprite::{Sprite, SpriteTexture},
             utils::{Drawable, TextureRef},
@@ -21,12 +29,6 @@ use quaso::{
         windowing::event::VirtualKeyCode,
     },
 };
-use raui_core::widget::{
-    component::text_box::TextBoxProps,
-    unit::text::{TextBoxFont, TextBoxHorizontalAlign, TextBoxVerticalAlign},
-    utils::Color,
-};
-use raui_immediate_widgets::core::text_box;
 use std::error::Error;
 
 const SPEED: f32 = 100.0;

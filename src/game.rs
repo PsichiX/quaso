@@ -4,7 +4,7 @@ use crate::{
         texture::TextureAssetSubsystem,
     },
     audio::Audio,
-    context::GameContext,
+    context::{AsyncGameContext, GameContext},
     coroutine::AsyncNextFrame,
 };
 use anput_jobs::{
@@ -17,6 +17,7 @@ use glutin::{
 };
 #[cfg(target_arch = "wasm32")]
 use instant::Instant;
+use intuicio_data::managed::DynamicManagedLazy;
 use keket::database::AssetDatabase;
 use spitfire_draw::{
     context::DrawContext,
@@ -129,6 +130,14 @@ impl GameJobs {
         self.spawn_on(JobLocation::Local, JobPriority::Normal, job)
     }
 
+    pub fn defer_with_meta<T: Send>(
+        &self,
+        meta: impl IntoIterator<Item = (String, DynamicManagedLazy)>,
+        job: impl Future<Output = T> + Send + Sync + 'static,
+    ) -> JobHandle<T> {
+        self.spawn_on_with_meta(JobLocation::Local, JobPriority::Normal, meta, job)
+    }
+
     pub fn spawn_on<T: Send>(
         &self,
         location: JobLocation,
@@ -136,6 +145,18 @@ impl GameJobs {
         job: impl Future<Output = T> + Send + Sync + 'static,
     ) -> JobHandle<T> {
         self.jobs.spawn_on(location, priority, job).unwrap()
+    }
+
+    pub fn spawn_on_with_meta<T: Send>(
+        &self,
+        location: JobLocation,
+        priority: JobPriority,
+        meta: impl IntoIterator<Item = (String, DynamicManagedLazy)>,
+        job: impl Future<Output = T> + Send + Sync + 'static,
+    ) -> JobHandle<T> {
+        self.jobs
+            .spawn_on_with_meta(location, priority, meta, job)
+            .unwrap()
     }
 
     pub fn scoped_spawn<T: Send + 'static>(
@@ -313,7 +334,7 @@ impl GameInstance {
     }
 
     pub fn process_frame(&mut self, graphics: &mut Graphics<Vertex>) {
-        let delta_time = self.timer.elapsed().as_secs_f32();
+        let mut delta_time = self.timer.elapsed().as_secs_f32();
         self.async_next_frame.tick();
 
         for subsystem in &mut self.subsystems {
@@ -334,7 +355,6 @@ impl GameInstance {
             );
         }
         self.assets.maintain().unwrap();
-        self.jobs.jobs.run_local();
 
         if let Some(state) = self.states.last_mut() {
             self.timer = Instant::now();
@@ -427,6 +447,27 @@ impl GameInstance {
         self.draw.end_frame();
         if !self.input_maintain_on_fixed_step || fixed_step {
             self.input.maintain();
+        }
+
+        {
+            let mut async_context = AsyncGameContext {
+                graphics,
+                draw: &mut self.draw,
+                gui: &mut self.gui,
+                input: &mut self.input,
+                state_change: &mut self.state_change,
+                assets: &mut self.assets,
+                audio: &mut self.audio,
+                globals: &mut self.globals,
+                async_next_frame: &self.async_next_frame,
+            };
+            let (async_context_lazy, _async_context_lifetime) =
+                DynamicManagedLazy::make(&mut async_context);
+            let (delta_time_lazy, _delta_time_lifetime) = DynamicManagedLazy::make(&mut delta_time);
+            self.jobs.jobs.run_local_with_meta([
+                ("context".to_owned(), async_context_lazy),
+                ("delta_time".to_owned(), delta_time_lazy),
+            ]);
         }
 
         match std::mem::take(&mut self.state_change) {
