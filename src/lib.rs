@@ -1,6 +1,7 @@
 pub mod third_party {
     pub use anim8;
     pub use anput;
+    pub use anput_generator;
     pub use anput_jobs;
     pub use emergent;
     pub use fontdue;
