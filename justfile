@@ -28,6 +28,7 @@ checks:
     just clippy
     just test
     cd ./templates/fresh-start && just checks
+    cd ./templates/slot-machine && just checks
     cd ./templates/top-down && just checks
 
 clean:
@@ -51,4 +52,5 @@ publish:
 
 package-templates:
     powershell Compress-Archive -Force "./templates/fresh-start/*" ./target/fresh-start-template.zip
+    powershell Compress-Archive -Force "./templates/slot-machine/*" ./target/slot-machine-template.zip
     powershell Compress-Archive -Force "./templates/top-down/*" ./target/top-down-template.zip

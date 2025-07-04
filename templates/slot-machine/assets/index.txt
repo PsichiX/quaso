@@ -1,0 +1,6 @@
+font://roboto.ttf
+texture://machine.png
+texture://slots.png
+texture://lever-up.png
+texture://lever-down.png
+texture://reel.png

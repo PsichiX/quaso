@@ -3,7 +3,7 @@ members = ["templates/*"]
 
 [package]
 name = "quaso"
-version = "0.38.2"
+version = "0.39.0"
 edition = "2024"
 authors = ["Patryk 'PsichiX' Budzynski <psichix@gmail.com>"]
 description = "Toolset for making Micro Games quickly"
@@ -35,7 +35,7 @@ anput = "0.15"
 anput-jobs = "0.15"
 anput-generator = "0.15"
 nodio = "0.4"
-keket = "0.14"
+keket = "0.15"
 emergent = "1.7"
 typid = "1"
 image = "0.25"
@@ -46,7 +46,7 @@ serde_json = { version = "1" }
 toml = "0.8"
 noise = "0.9"
 rand = "0.8"
-kira = "0.9"
+kira = "0.10"
 rstar = "0.12"
 gilrs = "0.11"
 anim8 = "1.4"

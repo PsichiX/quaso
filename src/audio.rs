@@ -1,5 +1,5 @@
 use kira::{
-    manager::{AudioManager, AudioManagerSettings},
+    AudioManager, AudioManagerSettings,
     sound::static_sound::{StaticSoundData, StaticSoundHandle},
 };
 use std::collections::HashMap;

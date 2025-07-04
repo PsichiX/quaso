@@ -1,6 +1,11 @@
 use crate::context::AsyncGameContext;
-use anput_jobs::coroutine::meta;
+use anput_jobs::{
+    JobHandle, JobLocation, JobPriority,
+    coroutine::{meta, spawn_on},
+};
+use intuicio_data::lifetime::LifetimeWeakState;
 use std::{
+    future::poll_fn,
     pin::Pin,
     sync::{
         Arc,
@@ -39,6 +44,27 @@ impl Future for AsyncNextFrame {
     }
 }
 
+pub async fn async_lifetime_bound<F: Future>(
+    lifetimes: impl IntoIterator<Item = LifetimeWeakState>,
+    future: F,
+) -> Option<F::Output> {
+    let lifetimes = lifetimes.into_iter().collect::<Vec<_>>();
+    let mut future = Box::pin(future);
+    poll_fn(move |cx| {
+        if lifetimes.iter().any(|state| state.upgrade().is_none()) {
+            cx.waker().wake_by_ref();
+            Poll::Ready(None)
+        } else {
+            cx.waker().wake_by_ref();
+            future
+                .as_mut()
+                .poll(cx)
+                .map(|output: <F as Future>::Output| Some(output))
+        }
+    })
+    .await
+}
+
 pub async fn async_game_context<'a>() -> Option<AsyncGameContext<'a>> {
     meta::<AsyncGameContext>("context")
         .await
@@ -51,4 +77,12 @@ pub async fn async_delta_time() -> f32 {
         .await
         .and_then(|dt| dt.read().map(|dt| *dt))
         .unwrap_or_default()
+}
+
+pub async fn defer<F>(job: F) -> JobHandle<F::Output>
+where
+    F: Future + Send + Sync + 'static,
+    <F as Future>::Output: Send,
+{
+    spawn_on(JobLocation::Local, JobPriority::Normal, job).await
 }

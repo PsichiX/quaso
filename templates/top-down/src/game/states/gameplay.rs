@@ -419,7 +419,7 @@ impl Gameplay {
             })
             .min_by(|a, b| a.partial_cmp(b).unwrap())
             .unwrap_or(f32::INFINITY)
-            .min(300.0) as f64
+            .min(300.0)
             / 300.0;
         if let Some(handle) = self.music_forest.as_mut() {
             handle.set_volume(factor * 2.0, Default::default());
