@@ -78,16 +78,8 @@ impl Default for State {
             SIZE.into(),
             |location: Vec2<usize>, size: Vec2<usize>, _| {
                 let center = size / 2;
-                let x = if location.x >= center.x {
-                    location.x - center.x
-                } else {
-                    center.x - location.x
-                } as f64;
-                let y = if location.y >= center.y {
-                    location.y - center.y
-                } else {
-                    center.y - location.y
-                } as f64;
+                let x = location.x.abs_diff(center.x) as f64;
+                let y = location.y.abs_diff(center.y) as f64;
                 let result = (x / center.x as f64).max(y / center.y as f64);
                 result * result
             },

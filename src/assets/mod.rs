@@ -86,7 +86,7 @@ impl AssetPackage {
                     let name = if root.is_empty() {
                         name.to_owned()
                     } else {
-                        format!("{}/{}", root, name)
+                        format!("{root}/{name}")
                     };
                     if path.is_dir() {
                         visit_dirs(&path, &name, registry, content)?;
@@ -155,7 +155,7 @@ impl ContainerPartialFetch for AssetPackage {
                 .into())
             }
         } else {
-            Err(format!("Asset: `{}` not present in package!", path).into())
+            Err(format!("Asset: `{path}` not present in package!").into())
         }
     }
 }
