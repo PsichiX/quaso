@@ -79,6 +79,20 @@ pub async fn async_delta_time() -> f32 {
         .unwrap_or_default()
 }
 
+pub async fn async_delay(mut seconds: f32) {
+    while seconds > 0.0 {
+        let delta = async_delta_time().await;
+        seconds -= delta;
+        async_next_frame().await;
+    }
+}
+
+pub async fn async_next_frame() {
+    if let Some(context) = async_game_context().await {
+        context.async_next_frame.clone().await;
+    }
+}
+
 pub async fn defer<F>(job: F) -> JobHandle<F::Output>
 where
     F: Future + Send + Sync + 'static,

@@ -4,7 +4,7 @@ use quaso::{
     assets::{make_directory_database, shader::ShaderAsset},
     config::Config,
     context::GameContext,
-    coroutine::async_delta_time,
+    coroutine::{async_delay, async_delta_time},
     game::{GameInstance, GameState, GameStateChange},
     third_party::{
         intuicio_data::managed::Managed,
@@ -114,6 +114,8 @@ impl GameState for State {
                     thread_rng().gen_range(-100.0..100.0),
                     thread_rng().gen_range(-100.0..100.0),
                 );
+                // Wait 5 in-game seconds before starting the movement.
+                async_delay(0.5).await;
                 // Move towards the target position smoothly.
                 loop {
                     // Calculate the delta time for smooth movement.
