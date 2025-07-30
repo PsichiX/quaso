@@ -1,15 +1,15 @@
 pub mod conditions;
 pub mod tasks;
 
-use self::{
-    conditions::{PlayerHasActiveWeapon, PlayerIsAttackingCondition, PlayerIsMovingCondition},
-    tasks::{
-        attack_axe::PlayerAttackAxeTask, attack_sword::PlayerAttackSwordTask, idle::PlayerIdleTask,
-        run::PlayerRunTask,
-    },
-};
-use super::{
+use crate::game::{
     item::Item,
+    player::{
+        conditions::{PlayerHasActiveWeapon, PlayerIsAttackingCondition, PlayerIsMovingCondition},
+        tasks::{
+            attack_axe::PlayerAttackAxeTask, attack_sword::PlayerAttackSwordTask,
+            idle::PlayerIdleTask, run::PlayerRunTask,
+        },
+    },
     utils::events::{Event, Events, Instigator},
 };
 use quaso::{

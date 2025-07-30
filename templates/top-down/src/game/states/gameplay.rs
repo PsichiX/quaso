@@ -1,12 +1,12 @@
-use super::{
-    game_end::{GameEnd, GameEndReason},
-    main_menu::MainMenu,
-};
 use crate::game::{
     drawables::light::draw_sphere_light,
     enemy::EnemyState,
     item::{Item, ItemKind},
     player::PlayerState,
+    states::{
+        game_end::{GameEnd, GameEndReason},
+        main_menu::MainMenu,
+    },
     torch::Torch,
     ui::{health_bar::health_bar, world_to_screen_content_layout},
     utils::{

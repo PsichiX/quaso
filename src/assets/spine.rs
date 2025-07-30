@@ -1,4 +1,4 @@
-use super::texture::TextureAsset;
+use crate::assets::texture::TextureAsset;
 use anput::world::World;
 use keket::{
     database::{

@@ -20,6 +20,7 @@ clippy:
 
 test:
     cargo test
+    cargo test --examples
 
 checks:
     just format

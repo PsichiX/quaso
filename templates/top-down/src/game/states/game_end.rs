@@ -1,5 +1,5 @@
-use super::{gameplay::Gameplay, main_menu::MainMenu};
 use crate::game::{
+    states::{gameplay::Gameplay, main_menu::MainMenu},
     ui::{make_theme, text_button::text_button},
     utils::events::{Event, Events},
 };

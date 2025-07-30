@@ -1,4 +1,4 @@
-use super::{PlayerState, PlayerWeapon};
+use crate::game::player::{PlayerState, PlayerWeapon};
 use quaso::{character::CharacterMemory, third_party::emergent::condition::Condition};
 
 pub struct PlayerIsMovingCondition;

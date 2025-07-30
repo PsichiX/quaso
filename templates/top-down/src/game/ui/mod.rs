@@ -1,7 +1,7 @@
 pub mod health_bar;
 pub mod text_button;
 
-use super::utils::world_to_screen_anchor;
+use crate::game::utils::world_to_screen_anchor;
 use quaso::{
     context::GameContext,
     third_party::{

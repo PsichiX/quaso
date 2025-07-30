@@ -1,10 +1,9 @@
-use super::main_menu::MainMenu;
 use quaso::{
     assets::shader::ShaderAsset,
     context::GameContext,
     game::{GameState, GameStateChange},
     third_party::{
-        spitfire_glow::prelude::Shader,
+        spitfire_glow::graphics::Shader,
         spitfire_gui::interactions::GuiInteractionsInputs,
         spitfire_input::{
             ArrayInputCombinator, InputActionRef, InputAxisRef, InputConsume, InputMapping,
@@ -13,6 +12,8 @@ use quaso::{
         windowing::event::MouseButton,
     },
 };
+
+use crate::game::states::main_menu::MainMenu;
 
 macro_rules! load_texture_series {
     (

@@ -1,4 +1,4 @@
-use super::EnemyState;
+use crate::game::enemy::EnemyState;
 use quaso::{
     character::CharacterMemory,
     third_party::{emergent::condition::Condition, vek::Vec2},

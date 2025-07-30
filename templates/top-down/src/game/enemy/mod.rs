@@ -2,15 +2,15 @@ pub mod ai;
 pub mod conditions;
 pub mod tasks;
 
-use self::{
-    ai::{pursue::EnemyAiPursueTask, wait::EnemyAiWaitTask, wander::EnemyAiWanderTask},
-    conditions::{
-        EnemyHasPlayerInRangeCondition, EnemyIsAttackingCondition, EnemyIsMovingCondition,
-        EnemyIsNotInCooldownCondition,
+use crate::game::{
+    enemy::{
+        ai::{pursue::EnemyAiPursueTask, wait::EnemyAiWaitTask, wander::EnemyAiWanderTask},
+        conditions::{
+            EnemyHasPlayerInRangeCondition, EnemyIsAttackingCondition, EnemyIsMovingCondition,
+            EnemyIsNotInCooldownCondition,
+        },
+        tasks::{attack::EnemyAttackTask, idle::EnemyIdleTask, run::EnemyRunTask},
     },
-    tasks::{attack::EnemyAttackTask, idle::EnemyIdleTask, run::EnemyRunTask},
-};
-use super::{
     item::Item,
     player::PlayerState,
     utils::events::{Event, Events, Instigator},

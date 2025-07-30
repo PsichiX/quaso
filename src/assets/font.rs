@@ -1,4 +1,4 @@
-use crate::{context::GameContext, game::GameSubsystem};
+use crate::{assets::name_from_path, context::GameContext, game::GameSubsystem};
 use anput::world::World;
 use fontdue::Font;
 use keket::{
@@ -6,8 +6,6 @@ use keket::{
     protocol::AssetProtocol,
 };
 use std::error::Error;
-
-use super::name_from_path;
 
 pub struct FontAsset {
     pub font: Font,
