@@ -161,7 +161,7 @@ impl Default for State {
 
 impl GameState for State {
     fn enter(&mut self, context: GameContext) {
-        context.graphics.main_camera.scaling = CameraScaling::FitVertical(SIZE as f32 * 10.0);
+        context.graphics.state.main_camera.scaling = CameraScaling::FitVertical(SIZE as f32 * 10.0);
 
         context
             .assets
@@ -217,18 +217,19 @@ impl GameState for State {
     fn draw_gui(&mut self, context: GameContext) {
         let size = context
             .graphics
+            .state
             .main_camera
             .scaling
-            .world_size(context.graphics.main_camera.screen_size);
+            .world_size(context.graphics.state.main_camera.screen_size);
         let [x, y] = self.mouse_position.get();
         let x = remap(
             x,
-            0.0..=context.graphics.main_camera.screen_size.x,
+            0.0..=context.graphics.state.main_camera.screen_size.x,
             0.0..=size.x,
         );
         let y = remap(
             y,
-            0.0..=context.graphics.main_camera.screen_size.y,
+            0.0..=context.graphics.state.main_camera.screen_size.y,
             0.0..=size.y,
         );
         let x = ((x / 10.0) as usize).min(SIZE.saturating_sub(1));

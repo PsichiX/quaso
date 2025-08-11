@@ -111,7 +111,7 @@ impl Default for PlayerState {
 
 impl GameObject for PlayerState {
     fn activate(&mut self, context: &mut GameContext) {
-        context.graphics.main_camera.transform.position = self.sprite.transform.position;
+        context.graphics.state.main_camera.transform.position = self.sprite.transform.position;
     }
 
     fn process(&mut self, context: &mut GameContext, delta_time: f32) {
@@ -132,8 +132,8 @@ impl GameObject for PlayerState {
             .try_normalized()
             .unwrap_or_default();
         let target = self.sprite.transform.position.xy() + movement * 150.0;
-        context.graphics.main_camera.transform.position = Vec2::lerp(
-            context.graphics.main_camera.transform.position.xy(),
+        context.graphics.state.main_camera.transform.position = Vec2::lerp(
+            context.graphics.state.main_camera.transform.position.xy(),
             target,
             delta_time,
         )

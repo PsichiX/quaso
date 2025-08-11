@@ -53,9 +53,9 @@ impl Default for Gameplay {
 
 impl GameState for Gameplay {
     fn enter(&mut self, context: GameContext) {
-        context.graphics.color = [0.2, 0.2, 0.2, 1.0];
-        context.graphics.main_camera.screen_alignment = 0.5.into();
-        context.graphics.main_camera.scaling = CameraScaling::FitVertical(500.0);
+        context.graphics.state.color = [0.2, 0.2, 0.2, 1.0];
+        context.graphics.state.main_camera.screen_alignment = 0.5.into();
+        context.graphics.state.main_camera.scaling = CameraScaling::FitVertical(500.0);
         context.gui.coords_map_scaling = CoordsMappingScaling::FitVertical(500.0);
 
         context

@@ -10,8 +10,7 @@ use spitfire_draw::{
     utils::{Drawable, ShaderRef, TextureRef, Vertex},
 };
 use spitfire_glow::{
-    graphics::Graphics,
-    graphics::GraphicsBatch,
+    graphics::{GraphicsBatch, GraphicsTarget},
     renderer::{GlowBlending, GlowUniformValue},
 };
 use std::{
@@ -131,11 +130,11 @@ impl SpineSkeleton {
         self
     }
 
-    pub fn read(&self) -> Option<RwLockReadGuard<SkeletonController>> {
+    pub fn read(&'_ self) -> Option<RwLockReadGuard<'_, SkeletonController>> {
         self.controller.try_read().ok()
     }
 
-    pub fn write(&self) -> Option<RwLockWriteGuard<SkeletonController>> {
+    pub fn write(&'_ self) -> Option<RwLockWriteGuard<'_, SkeletonController>> {
         self.controller.try_write().ok()
     }
 
@@ -252,7 +251,7 @@ impl SpineSkeleton {
         &self,
         renderables: &[SkeletonCombinedRenderable],
         context: &mut DrawContext,
-        graphics: &mut Graphics<Vertex>,
+        graphics: &mut dyn GraphicsTarget<Vertex>,
     ) {
         for renderable in renderables {
             let batch = GraphicsBatch {
@@ -263,7 +262,9 @@ impl SpineSkeleton {
                     .map(|(k, v)| (k.clone(), v.to_owned()))
                     .chain(std::iter::once((
                         "u_projection_view".into(),
-                        GlowUniformValue::M4(graphics.main_camera.world_matrix().into_col_array()),
+                        GlowUniformValue::M4(
+                            graphics.state().main_camera.world_matrix().into_col_array(),
+                        ),
                     )))
                     .chain(
                         self.textures
@@ -290,8 +291,8 @@ impl SpineSkeleton {
                 scissor: None,
                 wireframe: false,
             };
-            graphics.stream.batch_optimized(batch);
-            graphics.stream.extend(
+            graphics.state_mut().stream.batch_optimized(batch);
+            graphics.state_mut().stream.extend(
                 renderable
                     .vertices
                     .iter()
@@ -314,7 +315,7 @@ impl SpineSkeleton {
 }
 
 impl Drawable for SpineSkeleton {
-    fn draw(&self, context: &mut DrawContext, graphics: &mut Graphics<Vertex>) {
+    fn draw(&self, context: &mut DrawContext, graphics: &mut dyn GraphicsTarget<Vertex>) {
         if let Ok(mut controller) = self.controller.try_write() {
             let renderables = controller.combined_renderables();
             self.draw_renderables(&renderables, context, graphics);
@@ -497,7 +498,7 @@ impl BudgetedSpineSkeleton {
 }
 
 impl Drawable for BudgetedSpineSkeleton {
-    fn draw(&self, context: &mut DrawContext, graphics: &mut Graphics<Vertex>) {
+    fn draw(&self, context: &mut DrawContext, graphics: &mut dyn GraphicsTarget<Vertex>) {
         if let Some(lod) = self.lod_skeleton() {
             lod.skeleton
                 .draw_renderables(&self.cached_renderables, context, graphics);

@@ -4,7 +4,7 @@ use spitfire_draw::{
     tiles::{TileInstance, TileMap, TileSet, TilesEmitter},
     utils::{Drawable, Vertex},
 };
-use spitfire_glow::graphics::Graphics;
+use spitfire_glow::graphics::GraphicsTarget;
 use std::{
     any::{Any, TypeId},
     ops::Range,
@@ -219,9 +219,9 @@ impl GridWorld {
 }
 
 impl Drawable for GridWorld {
-    fn draw(&self, context: &mut DrawContext, graphics: &mut Graphics<Vertex>) {
+    fn draw(&self, context: &mut DrawContext, graphics: &mut dyn GraphicsTarget<Vertex>) {
         let size = self.map_layers[0].tilemap.size();
-        let rectangle = graphics.main_camera.world_rectangle();
+        let rectangle = graphics.state().main_camera.world_rectangle();
         let offset = (rectangle.position() - self.position) / self.tile_size;
         let extent = rectangle.extent() / self.tile_size;
         let region = Rect {

@@ -102,14 +102,14 @@ impl GameGlobals {
         self.globals.remove(&TypeId::of::<T>());
     }
 
-    pub fn read<T: 'static>(&self) -> Option<Ref<T>> {
+    pub fn read<T: 'static>(&'_ self) -> Option<Ref<'_, T>> {
         self.globals
             .get(&TypeId::of::<T>())
             .and_then(|v| v.try_borrow().ok())
             .map(|v| Ref::map(v, |v| v.downcast_ref::<T>().unwrap()))
     }
 
-    pub fn write<T: 'static>(&self) -> Option<RefMut<T>> {
+    pub fn write<T: 'static>(&'_ self) -> Option<RefMut<'_, T>> {
         self.globals
             .get(&TypeId::of::<T>())
             .and_then(|v| v.try_borrow_mut().ok())

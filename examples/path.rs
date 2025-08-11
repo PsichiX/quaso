@@ -54,9 +54,9 @@ impl Default for State {
 
 impl GameState for State {
     fn enter(&mut self, context: GameContext) {
-        context.graphics.color = [0.2, 0.2, 0.2, 1.0];
-        context.graphics.main_camera.screen_alignment = 0.5.into();
-        context.graphics.main_camera.scaling = CameraScaling::FitVertical(300.0);
+        context.graphics.state.color = [0.2, 0.2, 0.2, 1.0];
+        context.graphics.state.main_camera.screen_alignment = 0.5.into();
+        context.graphics.state.main_camera.scaling = CameraScaling::FitVertical(300.0);
 
         let pointer_x = InputAxisRef::default();
         let pointer_y = InputAxisRef::default();
@@ -108,11 +108,13 @@ impl GameState for State {
             let source = Vec2::from(mouse_xy.get());
             let source = context
                 .graphics
+                .state
                 .main_camera
                 .screen_matrix()
                 .mul_point(source);
             let source = context
                 .graphics
+                .state
                 .main_camera
                 .world_matrix()
                 .inverted()

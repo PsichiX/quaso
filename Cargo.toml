@@ -3,7 +3,7 @@ members = ["templates/*"]
 
 [package]
 name = "quaso"
-version = "0.39.4"
+version = "0.40.0"
 edition = "2024"
 authors = ["Patryk 'PsichiX' Budzynski <psichix@gmail.com>"]
 description = "Toolset for making Micro Games quickly"
@@ -15,12 +15,12 @@ readme = "README.md"
 exclude = ["resources/", "templates/"]
 
 [dependencies]
-spitfire-core = "0.35"
-spitfire-glow = "0.35"
-spitfire-fontdue = "0.35"
-spitfire-draw = "0.35"
-spitfire-input = "0.35"
-spitfire-gui = "0.35"
+spitfire-core = "0.36"
+spitfire-glow = "0.36"
+spitfire-fontdue = "0.36"
+spitfire-draw = "0.36"
+spitfire-input = "0.36"
+spitfire-gui = "0.36"
 raui-core = "0.70"
 raui-material = "0.70"
 raui-immediate = "0.70"
@@ -31,9 +31,9 @@ intuicio-derive = "0.47"
 intuicio-backend-vm = "0.47"
 intuicio-frontend-simpleton = { version = "0.47", default-features = false }
 randscape = "0.1"
-anput = "0.16"
-anput-jobs = "0.16"
-anput-generator = "0.16"
+anput = "0.19"
+anput-jobs = "0.19"
+anput-generator = "0.19"
 nodio = "0.4"
 keket = "0.15"
 emergent = "1.7"

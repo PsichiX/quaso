@@ -28,7 +28,7 @@ pub struct MainMenu;
 
 impl GameState for MainMenu {
     fn enter(&mut self, context: GameContext) {
-        context.graphics.color = [0.2, 0.2, 0.2, 1.0];
+        context.graphics.state.color = [0.2, 0.2, 0.2, 1.0];
         context.gui.coords_map_scaling = Default::default();
     }
 
