@@ -17,7 +17,7 @@ use glutin::{
 };
 #[cfg(target_arch = "wasm32")]
 use instant::Instant;
-use intuicio_data::managed::DynamicManagedLazy;
+use intuicio_data::managed::{DynamicManagedLazy, Managed, ManagedLazy};
 use keket::database::AssetDatabase;
 use spitfire_draw::{
     context::DrawContext,
@@ -119,10 +119,14 @@ impl GameGlobals {
 
 #[derive(Default)]
 pub struct GameJobs {
-    jobs: Jobs,
+    jobs: Managed<Jobs>,
 }
 
 impl GameJobs {
+    pub fn lazy(&self) -> ManagedLazy<Jobs> {
+        unsafe { self.jobs.lazy_immutable() }
+    }
+
     pub fn defer<T: Send>(
         &self,
         job: impl Future<Output = T> + Send + Sync + 'static,
@@ -144,7 +148,11 @@ impl GameJobs {
         priority: JobPriority,
         job: impl Future<Output = T> + Send + Sync + 'static,
     ) -> JobHandle<T> {
-        self.jobs.spawn_on(location, priority, job).unwrap()
+        self.jobs
+            .read()
+            .unwrap()
+            .spawn_on(location, priority, job)
+            .unwrap()
     }
 
     pub fn spawn_on_with_meta<T: Send>(
@@ -155,6 +163,8 @@ impl GameJobs {
         job: impl Future<Output = T> + Send + Sync + 'static,
     ) -> JobHandle<T> {
         self.jobs
+            .read()
+            .unwrap()
             .spawn_on_with_meta(location, priority, meta, job)
             .unwrap()
     }
@@ -163,7 +173,8 @@ impl GameJobs {
         &self,
         job: impl Future<Output = T> + Send + Sync,
     ) -> Option<T> {
-        let mut scope = ScopedJobs::<T>::new(&self.jobs);
+        let jobs = self.jobs.read().unwrap();
+        let mut scope = ScopedJobs::<T>::new(&jobs);
         let _ = scope.spawn_on(
             JobLocation::other_than_current_thread(),
             JobPriority::High,
@@ -176,14 +187,15 @@ impl GameJobs {
         &self,
         job: impl Fn(JobContext) -> T + Send + Sync + 'static,
     ) -> AllJobsHandle<T> {
-        self.jobs.broadcast(job).unwrap()
+        self.jobs.read().unwrap().broadcast(job).unwrap()
     }
 
     pub fn scoped_broadcast<T: Send + 'static>(
         &self,
         job: impl Fn(JobContext) -> T + Send + Sync,
     ) -> Vec<T> {
-        let mut scope = ScopedJobs::<T>::new(&self.jobs);
+        let jobs = self.jobs.read().unwrap();
+        let mut scope = ScopedJobs::<T>::new(&jobs);
         let _ = scope.broadcast(job);
         scope.execute()
     }
@@ -193,7 +205,11 @@ impl GameJobs {
         work_groups: usize,
         job: impl Fn(JobContext) -> T + Send + Sync + 'static,
     ) -> AllJobsHandle<T> {
-        self.jobs.broadcast_n(work_groups, job).unwrap()
+        self.jobs
+            .read()
+            .unwrap()
+            .broadcast_n(work_groups, job)
+            .unwrap()
     }
 
     pub fn scoped_broadcast_n<T: Send + 'static>(
@@ -201,7 +217,8 @@ impl GameJobs {
         work_groups: usize,
         job: impl Fn(JobContext) -> T + Send + Sync,
     ) -> Vec<T> {
-        let mut scope = ScopedJobs::<T>::new(&self.jobs);
+        let jobs = self.jobs.read().unwrap();
+        let mut scope = ScopedJobs::<T>::new(&jobs);
         let _ = scope.broadcast_n(work_groups, job);
         scope.execute()
     }
@@ -316,7 +333,7 @@ impl GameInstance {
     }
 
     pub fn with_jobs_named_worker(mut self, name: impl ToString) -> Self {
-        self.jobs.jobs.add_named_worker(name);
+        self.jobs.jobs.write().unwrap().add_named_worker(name);
         self
     }
 
@@ -464,7 +481,7 @@ impl GameInstance {
             let (async_context_lazy, _async_context_lifetime) =
                 DynamicManagedLazy::make(&mut async_context);
             let (delta_time_lazy, _delta_time_lifetime) = DynamicManagedLazy::make(&mut delta_time);
-            self.jobs.jobs.run_local_with_meta([
+            self.jobs.jobs.read().unwrap().run_local_with_meta([
                 ("context".to_owned(), async_context_lazy),
                 ("delta_time".to_owned(), delta_time_lazy),
             ]);
