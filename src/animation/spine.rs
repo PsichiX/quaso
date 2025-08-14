@@ -22,7 +22,7 @@ use std::{
         mpsc::{Receiver, channel},
     },
 };
-use vek::{Quaternion, Transform, Vec3};
+use vek::{Mat4, Vec2};
 
 pub enum SpineEvent {
     Start,
@@ -183,26 +183,26 @@ impl SpineSkeleton {
         }
     }
 
-    pub fn transform(&self, bone: Option<&str>) -> Option<Transform<f32, f32, f32>> {
+    /// (position, rotation, scale)?
+    pub fn local_transform(&self, bone: Option<&str>) -> Option<(Vec2<f32>, f32, Vec2<f32>)> {
         let controller = self.controller.try_read().ok()?;
         let bone = if let Some(name) = bone {
             controller.skeleton.find_bone(name)?
         } else {
             controller.skeleton.bone_root()
         };
-        let (x, y) = bone.local_to_world(bone.x(), bone.y());
-        let (scale_x, scale_y) = bone.local_to_world(bone.scale_x(), bone.scale_y());
-        let rotation = bone.local_to_world_rotation(bone.rotation());
-        Some(Transform {
-            position: Vec3::new(x, y, 0.0),
-            orientation: Quaternion::rotation_z(rotation.to_radians()),
-            scale: Vec3::new(scale_x, scale_y, 1.0),
-        })
+        Some((
+            Vec2::new(bone.x(), -bone.y()),
+            bone.rotation().to_radians(),
+            Vec2::new(bone.scale_x(), bone.scale_y()),
+        ))
     }
 
-    pub fn set_transform(
+    pub fn set_local_transform(
         &self,
-        transform: Transform<f32, f32, f32>,
+        position: Vec2<f32>,
+        rotation: f32,
+        scale: Vec2<f32>,
         bone: Option<&str>,
         update_physics: bool,
     ) {
@@ -216,15 +216,11 @@ impl SpineSkeleton {
             } else {
                 controller.skeleton.bone_root_mut()
             };
-            let (x, y) = bone.world_to_local(transform.position.x, transform.position.y);
-            let (scale_x, scale_y) = bone.world_to_local(transform.scale.x, transform.scale.y);
-            let rotation = transform.orientation.into_angle_axis();
-            let rotation = bone.world_to_local_rotation((rotation.1.z * rotation.0).to_degrees());
-            bone.set_x(x);
-            bone.set_y(y);
-            bone.set_scale_x(scale_x);
-            bone.set_scale_y(scale_y);
-            bone.set_rotation(rotation);
+            bone.set_x(position.x);
+            bone.set_y(-position.y);
+            bone.set_scale_x(scale.x);
+            bone.set_scale_y(scale.y);
+            bone.set_rotation(rotation.to_degrees());
             controller
                 .skeleton
                 .update_world_transform(if update_physics {
@@ -235,16 +231,54 @@ impl SpineSkeleton {
         }
     }
 
-    pub fn update_transform(
+    pub fn update_local_transform(
         &self,
         bone: Option<&str>,
         update_physics: bool,
-        f: impl FnOnce(&mut Transform<f32, f32, f32>),
+        f: impl FnOnce(&mut Vec2<f32>, &mut f32, &mut Vec2<f32>),
     ) {
-        if let Some(mut transform) = self.transform(bone) {
-            f(&mut transform);
-            self.set_transform(transform, bone, update_physics);
+        if let Some((mut position, mut rotation, mut scale)) = self.local_transform(bone) {
+            f(&mut position, &mut rotation, &mut scale);
+            self.set_local_transform(position, rotation, scale, bone, update_physics);
         }
+    }
+
+    pub fn world_reposition_with(
+        &self,
+        position: Vec2<f32>,
+        bone: Option<&str>,
+        update_physics: bool,
+    ) {
+        let Some((root_position, _, _)) = self.local_transform(None) else {
+            return;
+        };
+        let Some(matrix) = self.local_to_world_matrix(bone) else {
+            return;
+        };
+        let offset = root_position - matrix.mul_point(Vec2::zero());
+        self.update_local_transform(None, update_physics, |pos, _, _| {
+            *pos = position + offset;
+        });
+    }
+
+    pub fn local_to_world_matrix(&self, bone: Option<&str>) -> Option<Mat4<f32>> {
+        let controller = self.controller.try_read().ok()?;
+        let bone = if let Some(name) = bone {
+            controller.skeleton.find_bone(name)?
+        } else {
+            controller.skeleton.bone_root()
+        };
+        Some(Mat4::<f32>::from_col_arrays([
+            [bone.a(), bone.c(), 0.0, 0.0],
+            [bone.b(), bone.d(), 0.0, 0.0],
+            [0.0, 0.0, 1.0, 0.0],
+            [bone.world_x(), -bone.world_y(), 0.0, 1.0],
+        ]))
+    }
+
+    pub fn world_to_local_matrix(&self, bone: Option<&str>) -> Option<Mat4<f32>> {
+        self.local_to_world_matrix(bone)
+            .map(|matrix| matrix.inverted())
     }
 
     fn draw_renderables(

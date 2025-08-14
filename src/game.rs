@@ -10,6 +10,7 @@ use crate::{
 use anput_jobs::{
     AllJobsHandle, JobContext, JobHandle, JobLocation, JobPriority, Jobs, ScopedJobs,
 };
+use gilrs::Gilrs;
 #[cfg(not(target_arch = "wasm32"))]
 use glutin::{
     event::{Event, WindowEvent},
@@ -332,8 +333,28 @@ impl GameInstance {
         self
     }
 
+    pub fn with_jobs(mut self, jobs: Jobs) -> Self {
+        self.jobs.jobs = Managed::new(jobs);
+        self
+    }
+
+    pub fn with_jobs_unnamed_worker(mut self) -> Self {
+        self.jobs.jobs.write().unwrap().add_unnamed_worker();
+        self
+    }
+
     pub fn with_jobs_named_worker(mut self, name: impl ToString) -> Self {
         self.jobs.jobs.write().unwrap().add_named_worker(name);
+        self
+    }
+
+    pub fn with_gamepads(mut self) -> Self {
+        self.input = self.input.with_gamepads();
+        self
+    }
+
+    pub fn with_gamepads_custom(mut self, gamepads: Gilrs) -> Self {
+        self.input = self.input.with_gamepads_custom(gamepads);
         self
     }
 

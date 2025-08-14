@@ -196,9 +196,9 @@ impl GameState for State {
             let movement = Vec2::<f32>::from(self.movement.get());
             skeleton
                 .skeleton
-                .update_transform(None, false, |transform| {
-                    transform.position.x += movement.x * SPEED * delta_time;
-                    transform.position.y -= movement.y * SPEED * delta_time;
+                .update_local_transform(None, false, |position, _, _| {
+                    position.x += movement.x * SPEED * delta_time;
+                    position.y += movement.y * SPEED * delta_time;
                 });
         };
         // Update skeleton state based on its refresh frequency.
