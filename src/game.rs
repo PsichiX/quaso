@@ -35,7 +35,7 @@ use spitfire_input::InputContext;
 use std::time::Instant;
 use std::{
     any::{Any, TypeId},
-    cell::{Ref, RefCell, RefMut},
+    cell::{LazyCell, Ref, RefCell, RefMut},
     collections::HashMap,
 };
 #[cfg(target_arch = "wasm32")]
@@ -88,9 +88,41 @@ pub trait GameSubsystem {
     fn run(&mut self, context: GameContext, delta_time: f32);
 }
 
-#[derive(Default)]
 pub struct GameGlobals {
     globals: HashMap<TypeId, RefCell<Box<dyn Any>>>,
+    is_touch_device: LazyCell<bool>,
+}
+
+impl Default for GameGlobals {
+    fn default() -> Self {
+        Self {
+            globals: HashMap::new(),
+            is_touch_device: LazyCell::new(|| {
+                #[cfg(target_arch = "wasm32")]
+                {
+                    use wasm_bindgen::prelude::*;
+                    use web_sys::window;
+
+                    let Some(window) = window() else {
+                        return false;
+                    };
+                    if js_sys::Reflect::has(&window, &JsValue::from_str("ontouchstart"))
+                        .unwrap_or(false)
+                    {
+                        return true;
+                    }
+                    if window.navigator().max_touch_points() > 0 {
+                        return true;
+                    }
+                    false
+                }
+                #[cfg(not(target_arch = "wasm32"))]
+                {
+                    cfg!(target_os = "android") || cfg!(target_os = "ios")
+                }
+            }),
+        }
+    }
 }
 
 impl GameGlobals {
@@ -115,6 +147,10 @@ impl GameGlobals {
             .get(&TypeId::of::<T>())
             .and_then(|v| v.try_borrow_mut().ok())
             .map(|v| RefMut::map(v, |v| v.downcast_mut::<T>().unwrap()))
+    }
+
+    pub fn is_touch_device(&self) -> bool {
+        *self.is_touch_device
     }
 }
 

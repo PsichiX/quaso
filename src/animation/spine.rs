@@ -159,9 +159,35 @@ impl SpineSkeleton {
         Ok(())
     }
 
+    pub fn add_animation(
+        &self,
+        name: &str,
+        track_index: usize,
+        timescale: f32,
+        looping: bool,
+        delay: f32,
+    ) -> Result<(), Box<dyn Error>> {
+        if let Ok(mut controller) = self.controller.try_write() {
+            let mut track = controller.animation_state.add_animation_by_name(
+                track_index,
+                name,
+                looping,
+                delay,
+            )?;
+            track.set_timescale(timescale);
+        }
+        Ok(())
+    }
+
     pub fn stop_animation(&self, track_index: usize) {
         if let Ok(mut controller) = self.controller.try_write() {
             controller.animation_state.clear_track(track_index);
+        }
+    }
+
+    pub fn stop_animations(&self) {
+        if let Ok(mut controller) = self.controller.try_write() {
+            controller.animation_state.clear_tracks();
         }
     }
 

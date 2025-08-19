@@ -24,7 +24,7 @@ run-desktop:
 
 run-web:
     just build web
-    simple-http-server
+    simple-http-server --ip 127.0.0.1 --port 8080 ./
 
 clippy:
     cargo clippy
