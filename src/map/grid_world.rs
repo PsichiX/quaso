@@ -5,10 +5,7 @@ use spitfire_draw::{
     utils::{Drawable, Vertex},
 };
 use spitfire_glow::graphics::GraphicsTarget;
-use std::{
-    any::{Any, TypeId},
-    ops::Range,
-};
+use std::{any::Any, ops::Range};
 use vek::{Rect, Vec2};
 
 pub trait GridWorldEmitterFilter: Any {
@@ -37,34 +34,34 @@ impl GridWorldEmitterFilter for InRangeFilter {
 
 pub struct GridWorldLayer {
     pub tilemap: TileMap,
+    pub visible: bool,
     filter: Box<dyn GridWorldEmitterFilter>,
-    filter_type: TypeId,
 }
 
 impl GridWorldLayer {
-    pub fn new(tilemap: TileMap) -> Self {
+    pub fn new(tilemap: TileMap, active: bool) -> Self {
         Self {
             tilemap,
+            visible: active,
             filter: Box::new(()),
-            filter_type: TypeId::of::<()>(),
         }
     }
 
-    pub fn new_filtered<F: GridWorldEmitterFilter + 'static>(tilemap: TileMap, filter: F) -> Self {
+    pub fn new_filtered<F: GridWorldEmitterFilter + 'static>(
+        tilemap: TileMap,
+        active: bool,
+        filter: F,
+    ) -> Self {
         Self {
             tilemap,
+            visible: active,
             filter: Box::new(filter),
-            filter_type: TypeId::of::<F>(),
         }
     }
 
-    pub fn access_filter<F: GridWorldEmitterFilter + 'static>(&mut self) -> Option<&mut F> {
-        if self.filter_type == TypeId::of::<F>() {
-            let result = &mut *self.filter as *mut dyn GridWorldEmitterFilter as *mut F;
-            unsafe { Some(&mut *result) }
-        } else {
-            None
-        }
+    pub fn access_filter<F: GridWorldEmitterFilter + 'static>(&self) -> Option<&F> {
+        let object: &dyn Any = &*self.filter;
+        object.downcast_ref::<F>()
     }
 }
 
@@ -92,6 +89,20 @@ impl GridWorld {
             tile_instances: Default::default(),
             colliders: Grid::new(size, false),
         }
+    }
+
+    pub fn from_layers(
+        tile_size: Vec2<f32>,
+        tileset: TileSet,
+        terrain_layers: impl IntoIterator<Item = GridWorldLayer>,
+    ) -> Option<Self> {
+        let mut terrain_layers = terrain_layers.into_iter();
+        let layer = terrain_layers.next()?;
+        let mut result = Self::new(tile_size, tileset, layer);
+        for layer in terrain_layers {
+            result = result.with_layer(layer);
+        }
+        Some(result)
     }
 
     pub fn with_position(mut self, value: Vec2<f32>) -> Self {
@@ -240,6 +251,7 @@ impl Drawable for GridWorld {
                 self.visible_layers
                     .clone()
                     .filter_map(|index| self.map_layers.get(index))
+                    .filter(|layer| layer.visible)
                     .flat_map(|layer| {
                         layer
                             .tilemap

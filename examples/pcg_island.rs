@@ -4,7 +4,7 @@ use quaso::{
     config::Config,
     context::GameContext,
     game::{GameInstance, GameState},
-    grid_world::{GridWorld, GridWorldLayer},
+    map::grid_world::{GridWorld, GridWorldLayer},
     third_party::{
         noise::{Fbm, MultiFractal, NoiseFn, SuperSimplex},
         randscape::{Grid, NoiseGenerator, RemapGenerator, SubGenerator},
@@ -136,7 +136,7 @@ impl Default for State {
                     )
                     .mapping(ROCK, TileSetItem::default().tint(Rgba::gray(0.5)))
                     .mapping(SNOW, TileSetItem::default().tint(Rgba::white())),
-                GridWorldLayer::new(TileMap::with_buffer(SIZE.into(), buffer).unwrap()),
+                GridWorldLayer::new(TileMap::with_buffer(SIZE.into(), buffer).unwrap(), true),
             ),
             weather_tileset: TileSet::default()
                 .shader(ShaderRef::name("color"))

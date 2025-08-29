@@ -55,7 +55,7 @@ pub mod context;
 pub mod coroutine;
 pub mod game;
 pub mod gamepad;
-pub mod grid_world;
+pub mod map;
 pub mod scripting;
 pub mod tag;
 

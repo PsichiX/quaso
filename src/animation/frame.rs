@@ -1,6 +1,6 @@
 use spitfire_draw::utils::TextureRef;
 use std::{
-    collections::{HashMap, HashSet},
+    collections::{BTreeMap, HashSet},
     ops::Range,
 };
 use vek::Rect;
@@ -10,7 +10,7 @@ pub struct FrameAnimation {
     frames: Range<usize>,
     current: Option<usize>,
     accumulator: f32,
-    events: HashMap<usize, HashSet<String>>,
+    events: BTreeMap<usize, HashSet<String>>,
     pub fps: f32,
     pub is_playing: bool,
     pub looping: bool,
@@ -115,7 +115,7 @@ pub struct SpriteAnimationFrame {
 #[derive(Debug, Clone)]
 pub struct SpriteAnimation {
     pub animation: FrameAnimation,
-    pub frames: HashMap<usize, SpriteAnimationFrame>,
+    pub frames: BTreeMap<usize, SpriteAnimationFrame>,
 }
 
 impl SpriteAnimation {

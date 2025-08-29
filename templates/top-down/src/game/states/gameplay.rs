@@ -45,13 +45,13 @@ use quaso::{
         windowing::event::VirtualKeyCode,
     },
 };
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 
 pub struct Gameplay {
     map: Sprite,
     player: Character<PlayerState>,
-    enemies: HashMap<ID<EnemyState>, Character<EnemyState>>,
-    items: HashMap<ID<Item>, Item>,
+    enemies: BTreeMap<ID<EnemyState>, Character<EnemyState>>,
+    items: BTreeMap<ID<Item>, Item>,
     torch: Torch,
     darkness: Option<Canvas>,
     exit: InputActionRef,
@@ -149,7 +149,7 @@ impl GameState for Gameplay {
     fn exit(&mut self, mut context: GameContext) {
         self.player.deactivate(&mut context);
 
-        for (_, mut enemy) in self.enemies.drain() {
+        for (_, mut enemy) in std::mem::take(&mut self.enemies) {
             enemy.deactivate(&mut context);
         }
 

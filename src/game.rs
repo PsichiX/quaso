@@ -36,7 +36,7 @@ use std::time::Instant;
 use std::{
     any::{Any, TypeId},
     cell::{LazyCell, Ref, RefCell, RefMut},
-    collections::HashMap,
+    collections::BTreeMap,
 };
 #[cfg(target_arch = "wasm32")]
 use winit::{
@@ -89,14 +89,14 @@ pub trait GameSubsystem {
 }
 
 pub struct GameGlobals {
-    globals: HashMap<TypeId, RefCell<Box<dyn Any>>>,
+    globals: BTreeMap<TypeId, RefCell<Box<dyn Any>>>,
     is_touch_device: LazyCell<bool>,
 }
 
 impl Default for GameGlobals {
     fn default() -> Self {
         Self {
-            globals: HashMap::new(),
+            globals: Default::default(),
             is_touch_device: LazyCell::new(|| {
                 #[cfg(target_arch = "wasm32")]
                 {

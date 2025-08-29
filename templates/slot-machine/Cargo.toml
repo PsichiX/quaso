@@ -9,11 +9,11 @@ name = "game_web"
 crate-type = ["cdylib"]
 
 [dependencies.quaso]
-version = "0.41"
+version = "0.42"
 path = "../.."
 
 [build-dependencies.quaso]
-version = "0.41"
+version = "0.42"
 path = "../.."
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
