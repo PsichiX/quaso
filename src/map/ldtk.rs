@@ -11,7 +11,7 @@
 //     let model: ldtk = serde_json::from_str(&json).unwrap();
 // }
 
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 
 /// This file is a JSON schema of files created by LDtk level editor (https://ldtk.io).
 ///
@@ -277,8 +277,7 @@ pub struct IntGridValueGroupDefinition {
 /// This section is mostly only intended for the LDtk editor app itself. You can safely
 /// ignore it.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct FieldDefinition {
-}
+pub struct FieldDefinition {}
 
 /// The `Tileset` definition is the most important part among project definitions. It
 /// contains some extra informations about each integrated tileset. If you only had to parse
@@ -432,8 +431,7 @@ pub struct AutoLayerRuleGroup {
 /// completely resolved internally by the editor before any saving. You should just ignore
 /// this part.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct AutoLayerRuleDefinition {
-}
+pub struct AutoLayerRuleDefinition {}
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct LdtkCustomCommand {
