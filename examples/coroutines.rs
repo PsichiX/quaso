@@ -7,7 +7,6 @@ use quaso::{
     coroutine::{async_delay, async_delta_time},
     game::{GameInstance, GameState, GameStateChange},
     third_party::{
-        intuicio_data::managed::Managed,
         spitfire_draw::{
             sprite::{Sprite, SpriteTexture},
             utils::{Drawable, TextureRef},
@@ -20,8 +19,9 @@ use quaso::{
         vek::Vec2,
         windowing::event::VirtualKeyCode,
     },
+    value::Val,
 };
-use rand::{Rng, thread_rng};
+use rand::{Rng, rng};
 use std::error::Error;
 
 const SPEED: f32 = 100.0;
@@ -83,7 +83,7 @@ impl GameState for Preloader {
 struct State {
     ferris: Sprite,
     exit: InputActionRef,
-    position: Managed<Vec2<f32>>,
+    position: Val<Vec2<f32>>,
 }
 
 impl GameState for State {
@@ -104,15 +104,15 @@ impl GameState for State {
 
         // Get lazy managed value of the interpolated position.
         // This allows us to read and write the position in a thread-safe manner.
-        let position = self.position.lazy();
+        let position = self.position.pointer();
         // Start a coroutine to handle the interpolated movement.
         context.jobs.defer(async move {
             // interpolated movement never ends.
             loop {
                 // Generate a random target position within a range.
                 let target = Vec2::new(
-                    thread_rng().gen_range(-100.0..100.0),
-                    thread_rng().gen_range(-100.0..100.0),
+                    rng().random_range(-100.0..100.0),
+                    rng().random_range(-100.0..100.0),
                 );
                 // Wait 5 in-game seconds before starting the movement.
                 async_delay(0.5).await;
@@ -121,12 +121,12 @@ impl GameState for State {
                     // Calculate the delta time for smooth movement.
                     let dt = async_delta_time().await;
                     // If the position is close enough to the target, break the loop.
-                    if (*position.read().unwrap() - target).magnitude() <= SPEED * dt {
+                    if (*position.read() - target).magnitude() <= SPEED * dt {
                         break;
                     }
                     // Interpolate towards the target position.
-                    let delta = (target - *position.read().unwrap()).normalized() * SPEED * dt;
-                    *position.write().unwrap() += delta;
+                    let delta = (target - *position.read()).normalized() * SPEED * dt;
+                    *position.write() += delta;
                     // Yield control to allow other tasks to run.
                     yield_now().await;
                 }
@@ -145,9 +145,7 @@ impl GameState for State {
     }
 
     fn draw(&mut self, context: GameContext) {
-        if let Some(position) = self.position.read() {
-            self.ferris.transform.position = (*position).into();
-        }
+        self.ferris.transform.position = (*self.position.read()).into();
         self.ferris.draw(context.draw, context.graphics);
     }
 }

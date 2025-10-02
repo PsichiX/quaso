@@ -30,7 +30,7 @@ impl Task<CharacterMemory<EnemyState>> for EnemyAttackTask {
     }
 
     fn on_enter(&mut self, memory: &mut CharacterMemory<EnemyState>) {
-        let state = memory.state.read().unwrap();
+        let state = memory.state.read();
 
         self.animation.animation.play();
 
@@ -47,7 +47,7 @@ impl Task<CharacterMemory<EnemyState>> for EnemyAttackTask {
     }
 
     fn on_update(&mut self, memory: &mut CharacterMemory<EnemyState>) {
-        let mut state = memory.state.write().unwrap();
+        let mut state = memory.state.write();
 
         self.animation.animation.update(memory.delta_time);
 

@@ -1,14 +1,16 @@
 use crate::game::{enemy::EnemyState, item::Item};
-use quaso::third_party::{
-    raui_core::{Managed, ManagedRef, ManagedRefMut},
-    rstar::{Envelope, Point, PointDistance, RTree, RTreeObject, AABB},
-    typid::ID,
-    vek::Vec2,
+use quaso::{
+    third_party::{
+        rstar::{Envelope, Point, PointDistance, RTree, RTreeObject, AABB},
+        typid::ID,
+        vek::Vec2,
+    },
+    value::{Ptr, Val},
 };
 use std::cell::RefCell;
 
 thread_local! {
-    static INSTANCE: RefCell<Managed<Space>> = Default::default();
+    static INSTANCE: RefCell<Val<Space>> = Default::default();
 }
 
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
@@ -71,12 +73,8 @@ pub struct Space {
 }
 
 impl Space {
-    pub fn read() -> ManagedRef<Self> {
-        INSTANCE.with(|instance| instance.borrow().borrow().unwrap())
-    }
-
-    pub fn write() -> ManagedRefMut<Self> {
-        INSTANCE.with(|instance| instance.borrow_mut().borrow_mut().unwrap())
+    pub fn access() -> Ptr<Self> {
+        INSTANCE.with(|instance| instance.borrow().pointer())
     }
 
     pub fn maintain(&mut self, objects: Vec<SpaceObject>) {

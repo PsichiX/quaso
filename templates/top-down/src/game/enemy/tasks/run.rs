@@ -37,7 +37,7 @@ impl Task<CharacterMemory<EnemyState>> for EnemyRunTask {
     }
 
     fn on_update(&mut self, memory: &mut CharacterMemory<EnemyState>) {
-        let mut state = memory.state.write().unwrap();
+        let mut state = memory.state.write();
         let Vec2 { x, y } = state.ai.direction;
         let direction = Vec3::new(x, y, 0.0).normalized();
 

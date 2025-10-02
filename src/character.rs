@@ -1,12 +1,15 @@
-use crate::{context::GameContext, game::GameObject};
+use crate::{
+    context::GameContext,
+    game::GameObject,
+    value::{Ptr, Val},
+};
 use emergent::task::Task;
-use raui_core::{Managed, ManagedRefMut};
 use spitfire_input::{InputMapping, InputMappingRef};
 use typid::ID;
 
 pub struct CharacterMemory<State> {
     pub delta_time: f32,
-    pub state: ManagedRefMut<State>,
+    pub state: Ptr<State>,
 }
 
 #[derive(Default)]
@@ -34,7 +37,7 @@ impl<State> CharacterController<State> {
 }
 
 pub struct Character<State: GameObject> {
-    pub state: Managed<State>,
+    pub state: Val<State>,
     task: Box<dyn Task<CharacterMemory<State>>>,
     controller: CharacterController<State>,
 }
@@ -46,7 +49,7 @@ impl<State: GameObject> Character<State> {
         controller: CharacterController<State>,
     ) -> Self {
         Self {
-            state: Managed::new(state),
+            state: Val::new(state),
             task: Box::new(task),
             controller,
         }
@@ -70,15 +73,15 @@ impl<State: GameObject> GameObject for Character<State> {
             CharacterController::Ai(task) => {
                 task.on_enter(&mut CharacterMemory {
                     delta_time: 0.0,
-                    state: self.state.borrow_mut().unwrap(),
+                    state: self.state.pointer(),
                 });
             }
         }
         let mut memory = CharacterMemory {
             delta_time: 0.0,
-            state: self.state.borrow_mut().unwrap(),
+            state: self.state.pointer(),
         };
-        self.state.write().unwrap().activate(context);
+        self.state.write().activate(context);
         self.task.on_enter(&mut memory);
     }
 
@@ -94,37 +97,37 @@ impl<State: GameObject> GameObject for Character<State> {
             CharacterController::Ai(task) => {
                 task.on_exit(&mut CharacterMemory {
                     delta_time: 0.0,
-                    state: self.state.borrow_mut().unwrap(),
+                    state: self.state.pointer(),
                 });
             }
         }
         let mut memory = CharacterMemory {
             delta_time: 0.0,
-            state: self.state.borrow_mut().unwrap(),
+            state: self.state.pointer(),
         };
         self.task.on_exit(&mut memory);
-        self.state.write().unwrap().deactivate(context);
+        self.state.write().deactivate(context);
     }
 
     fn process(&mut self, context: &mut GameContext, delta_time: f32) {
         if let CharacterController::Ai(task) = &mut self.controller {
             let mut memory = CharacterMemory {
                 delta_time,
-                state: self.state.borrow_mut().unwrap(),
+                state: self.state.pointer(),
             };
             task.on_process(&mut memory);
             task.on_update(&mut memory);
         }
         let mut memory = CharacterMemory {
             delta_time,
-            state: self.state.borrow_mut().unwrap(),
+            state: self.state.pointer(),
         };
         self.task.on_process(&mut memory);
         self.task.on_update(&mut memory);
-        self.state.write().unwrap().process(context, delta_time);
+        self.state.write().process(context, delta_time);
     }
 
     fn draw(&mut self, context: &mut GameContext) {
-        self.state.write().unwrap().draw(context);
+        self.state.write().draw(context);
     }
 }

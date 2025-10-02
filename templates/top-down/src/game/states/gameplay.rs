@@ -21,7 +21,7 @@ use quaso::{
     gamepad::GamepadManager,
     third_party::{
         kira::sound::static_sound::StaticSoundHandle,
-        rand::{thread_rng, Rng},
+        rand::{rng, Rng},
         raui_core::{
             layout::CoordsMappingScaling,
             widget::{
@@ -120,8 +120,8 @@ impl GameState for Gameplay {
 
         for _ in 0..6 {
             let position = [
-                thread_rng().gen_range((-self.map_radius)..=self.map_radius),
-                thread_rng().gen_range((-self.map_radius)..=self.map_radius),
+                rng().random_range((-self.map_radius)..=self.map_radius),
+                rng().random_range((-self.map_radius)..=self.map_radius),
                 0.0,
             ];
             self.enemies.insert(
@@ -132,8 +132,8 @@ impl GameState for Gameplay {
 
         for _ in 0..20 {
             let position = [
-                thread_rng().gen_range((-self.map_radius)..=self.map_radius),
-                thread_rng().gen_range((-self.map_radius)..=self.map_radius),
+                rng().random_range((-self.map_radius)..=self.map_radius),
+                rng().random_range((-self.map_radius)..=self.map_radius),
             ];
             self.items
                 .insert(ID::new(), Item::new(ItemKind::random(), position));
@@ -202,14 +202,7 @@ impl GameState for Gameplay {
 
             canvas.with(context.draw, context.graphics, true, |draw, graphics| {
                 draw_sphere_light(
-                    self.player
-                        .state
-                        .read()
-                        .unwrap()
-                        .sprite
-                        .transform
-                        .position
-                        .xy(),
+                    self.player.state.read().sprite.transform.position.xy(),
                     200.0,
                     0.0..=1.0,
                     1.0,
@@ -258,7 +251,7 @@ impl GameState for Gameplay {
         };
 
         {
-            let state = self.player.state.read().unwrap();
+            let state = self.player.state.read();
             let layout = world_to_screen_content_layout(
                 state.sprite.transform.position.xy(),
                 health_bar_rectangle,
@@ -269,7 +262,7 @@ impl GameState for Gameplay {
         }
 
         for enemy in self.enemies.values() {
-            let state = enemy.state.read().unwrap();
+            let state = enemy.state.read();
             let layout = world_to_screen_content_layout(
                 state.sprite.transform.position.xy(),
                 health_bar_rectangle,
@@ -287,7 +280,7 @@ impl GameState for Gameplay {
             TextBoxProps {
                 text: format!(
                     "Weapon: {:?}\nEnemies: {}\nItems: {}",
-                    self.player.state.read().unwrap().weapon,
+                    self.player.state.read().weapon,
                     self.enemies.len(),
                     self.items.len(),
                 ),
@@ -312,12 +305,12 @@ impl Gameplay {
         self.gamepads.maintain();
         Events::maintain(delta_time);
 
-        Space::write().write().unwrap().maintain(
+        Space::access().write().maintain(
             self.enemies
                 .iter()
                 .map(|(id, enemy)| SpaceObject {
                     id: SpaceObjectId::Enemy(*id),
-                    position: enemy.state.read().unwrap().sprite.transform.position.xy(),
+                    position: enemy.state.read().sprite.transform.position.xy(),
                     collider_radius: 20.0,
                 })
                 .chain(self.items.iter().map(|(id, item)| SpaceObject {
@@ -327,15 +320,7 @@ impl Gameplay {
                 }))
                 .chain(std::iter::once(SpaceObject {
                     id: SpaceObjectId::Player,
-                    position: self
-                        .player
-                        .state
-                        .read()
-                        .unwrap()
-                        .sprite
-                        .transform
-                        .position
-                        .xy(),
+                    position: self.player.state.read().sprite.transform.position.xy(),
                     collider_radius: 20.0,
                 }))
                 .collect(),
@@ -349,20 +334,16 @@ impl Gameplay {
 
         for enemy in self.enemies.values_mut() {
             enemy.process(context, delta_time);
-            enemy
-                .state
-                .write()
-                .unwrap()
-                .sense_player(&self.player.state.read().unwrap());
+            enemy.state.write().sense_player(&self.player.state.read());
         }
     }
 
     fn execute_events(&mut self, context: &mut GameContext) {
         Events::read(|events| {
-            self.player.state.write().unwrap().execute_events(events);
+            self.player.state.write().execute_events(events);
 
             for (id, enemy) in &mut self.enemies {
-                enemy.state.write().unwrap().execute_events(*id, events);
+                enemy.state.write().execute_events(*id, events);
             }
 
             for event in events {
@@ -394,15 +375,7 @@ impl Gameplay {
     }
 
     fn update_ambient_music(&mut self) {
-        let player_position = self
-            .player
-            .state
-            .read()
-            .unwrap()
-            .sprite
-            .transform
-            .position
-            .xy();
+        let player_position = self.player.state.read().sprite.transform.position.xy();
         let factor = self
             .enemies
             .values()
@@ -410,7 +383,6 @@ impl Gameplay {
                 enemy
                     .state
                     .read()
-                    .unwrap()
                     .sprite
                     .transform
                     .position
@@ -430,8 +402,8 @@ impl Gameplay {
     }
 
     fn resolve_collisions(&mut self) {
-        let space = Space::read();
-        let space = space.read().unwrap();
+        let space = Space::access();
+        let space = space.read();
 
         for object_item in space.iter() {
             if let SpaceObjectId::Item(item_id) = object_item.id {
@@ -439,13 +411,13 @@ impl Gameplay {
                     for object in space.collisions(object_item, true) {
                         match object.id {
                             SpaceObjectId::Player => {
-                                self.player.state.write().unwrap().consume_item(item);
+                                self.player.state.write().consume_item(item);
                                 Events::write(Event::KillItem { id: item_id });
                                 Events::write(Event::PlaySound("collect".into()));
                             }
                             SpaceObjectId::Enemy(enemy_id) => {
                                 if let Some(enemy) = self.enemies.get_mut(&enemy_id) {
-                                    enemy.state.write().unwrap().consume_item(item);
+                                    enemy.state.write().consume_item(item);
                                     Events::write(Event::KillItem { id: item_id });
                                 }
                             }

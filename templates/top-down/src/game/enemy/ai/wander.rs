@@ -3,7 +3,7 @@ use quaso::{
     character::CharacterMemory,
     third_party::{
         emergent::task::Task,
-        rand::{thread_rng, Rng},
+        rand::{rng, Rng},
         vek::Vec2,
     },
 };
@@ -31,14 +31,14 @@ impl Task<CharacterMemory<EnemyState>> for EnemyAiWanderTask {
     fn on_exit(&mut self, memory: &mut CharacterMemory<EnemyState>) {
         self.target_position = None;
 
-        let mut state = memory.state.write().unwrap();
+        let mut state = memory.state.write();
         state.ai.direction = 0.0.into();
         state.ai.attack = false;
         state.ai.cooldown_seconds = 0.0;
     }
 
     fn on_update(&mut self, memory: &mut CharacterMemory<EnemyState>) {
-        let mut state = memory.state.write().unwrap();
+        let mut state = memory.state.write();
 
         if let Some(position) = self.target_position {
             state.ai.direction = position - state.sprite.transform.position.xy();
@@ -47,8 +47,8 @@ impl Task<CharacterMemory<EnemyState>> for EnemyAiWanderTask {
                 state.ai.cooldown_seconds = self.cooldown_seconds;
             }
         } else {
-            let radius = thread_rng().gen_range(self.target_point_radius_range.clone());
-            let angle = thread_rng().gen_range(0.0..TAU);
+            let radius = rng().random_range(self.target_point_radius_range.clone());
+            let angle = rng().random_range(0.0..TAU);
             let (y, x) = angle.sin_cos();
             self.target_position = Some(Vec2 { x, y } * radius);
             state.ai.direction = 0.0.into();

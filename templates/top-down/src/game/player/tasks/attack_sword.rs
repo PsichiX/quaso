@@ -30,7 +30,7 @@ impl Task<CharacterMemory<PlayerState>> for PlayerAttackSwordTask {
     }
 
     fn on_enter(&mut self, memory: &mut CharacterMemory<PlayerState>) {
-        let state = memory.state.read().unwrap();
+        let state = memory.state.read();
 
         self.animation.animation.play();
 
@@ -56,10 +56,6 @@ impl Task<CharacterMemory<PlayerState>> for PlayerAttackSwordTask {
             }
         }
 
-        memory
-            .state
-            .write()
-            .unwrap()
-            .apply_animation(&self.animation);
+        memory.state.write().apply_animation(&self.animation);
     }
 }

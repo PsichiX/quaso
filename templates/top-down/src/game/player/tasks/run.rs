@@ -7,7 +7,7 @@ use quaso::{
     character::CharacterMemory,
     third_party::{
         emergent::task::Task,
-        rand::{thread_rng, Rng},
+        rand::{rng, Rng},
         vek::Vec3,
     },
 };
@@ -43,7 +43,7 @@ impl Task<CharacterMemory<PlayerState>> for PlayerRunTask {
     }
 
     fn on_update(&mut self, memory: &mut CharacterMemory<PlayerState>) {
-        let mut state = memory.state.write().unwrap();
+        let mut state = memory.state.write();
         let [x, y] = state.input.movement.get();
         let direction = Vec3::new(x, y, 0.0).try_normalized().unwrap_or_default();
 
@@ -52,7 +52,7 @@ impl Task<CharacterMemory<PlayerState>> for PlayerRunTask {
             for event in events {
                 if event == "footstep" {
                     Events::write(Event::PlaySound(
-                        match thread_rng().gen_range(1..=3) {
+                        match rng().random_range(1..=3) {
                             1 => "footstep/grass/1",
                             2 => "footstep/grass/2",
                             3 => "footstep/grass/3",

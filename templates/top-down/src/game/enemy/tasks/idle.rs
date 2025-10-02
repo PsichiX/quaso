@@ -33,10 +33,6 @@ impl Task<CharacterMemory<EnemyState>> for EnemyIdleTask {
     fn on_update(&mut self, memory: &mut CharacterMemory<EnemyState>) {
         self.animation.animation.update(memory.delta_time);
 
-        memory
-            .state
-            .write()
-            .unwrap()
-            .apply_animation(&self.animation);
+        memory.state.write().apply_animation(&self.animation);
     }
 }

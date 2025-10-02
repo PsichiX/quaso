@@ -5,7 +5,7 @@ pub struct EnemyAiWaitTask;
 
 impl Task<CharacterMemory<EnemyState>> for EnemyAiWaitTask {
     fn on_enter(&mut self, memory: &mut CharacterMemory<EnemyState>) {
-        let mut state = memory.state.write().unwrap();
+        let mut state = memory.state.write();
         state.ai.attack = false;
         state.ai.direction = 0.0.into();
     }

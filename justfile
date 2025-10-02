@@ -10,7 +10,7 @@ build:
     cargo build --examples
 
 build-wasm:
-    cargo build --target wasm32-unknown-unknown
+    RUSTFLAGS='--cfg getrandom_backend="wasm_js"' cargo build --target wasm32-unknown-unknown
 
 run NAME="top-down" PLATFORM="desktop":
     cd ./templates/{{NAME}} && just run {{PLATFORM}}

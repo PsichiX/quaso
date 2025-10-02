@@ -1,4 +1,4 @@
-use randscape::Grid;
+use randscape::grid::Grid;
 use spitfire_draw::{
     context::DrawContext,
     tiles::{TileInstance, TileMap, TileSet, TilesEmitter},

@@ -11,7 +11,7 @@ build platform="desktop":
     just build-{{platform}}
 
 build-web:
-    wasm-pack build --target web --release
+    RUSTFLAGS='--cfg getrandom_backend="wasm_js"' wasm-pack build --target web --release
 
 build-desktop:
     cargo build --release

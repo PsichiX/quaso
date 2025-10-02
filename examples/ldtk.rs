@@ -18,7 +18,7 @@ use quaso::{
         windowing::event::VirtualKeyCode,
     },
 };
-use rand::{Rng, thread_rng};
+use rand::{Rng, rng};
 use spitfire_draw::{
     sprite::{Sprite, SpriteTexture},
     utils::TextureRef,
@@ -116,7 +116,7 @@ impl GameState for State {
         let extractor = FilteredLdtkEntityExtractor::default().by_identifier(
             "Animal",
             |entity: &EntityInstance| {
-                let index = thread_rng().gen_range(0..=6);
+                let index = rng().random_range(0..=6);
                 Some(
                     Sprite::single(
                         SpriteTexture::new(

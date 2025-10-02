@@ -5,11 +5,11 @@ use quaso::{
     coroutine::async_lifetime_bound,
     game::{GameObject, GameState, GameStateChange},
     third_party::{
-        intuicio_data::managed::Managed,
         spitfire_glow::graphics::{CameraScaling, Shader},
         spitfire_input::{InputActionRef, InputConsume, InputMapping, VirtualAction},
         windowing::event::VirtualKeyCode,
     },
+    value::Val,
 };
 
 pub const WRAPPED_TEXTURED_FRAGMENT: &str = r#"#version 300 es
@@ -28,7 +28,7 @@ void main() {
 
 #[derive(Default)]
 pub struct Gameplay {
-    pub machine: Managed<SlotMachine>,
+    pub machine: Val<SlotMachine>,
     pub action: InputActionRef,
     pub exit: InputActionRef,
 }
@@ -103,7 +103,7 @@ impl GameState for Gameplay {
             return;
         }
         if self.action.get().is_down() {
-            let machine = self.machine.lazy();
+            let machine = self.machine.pointer();
             context.jobs.defer(async_lifetime_bound(
                 [machine.lifetime().state().clone()],
                 async {
@@ -122,6 +122,6 @@ impl GameState for Gameplay {
     }
 
     fn draw(&mut self, mut context: GameContext) {
-        self.machine.write().unwrap().draw(&mut context);
+        self.machine.write().draw(&mut context);
     }
 }

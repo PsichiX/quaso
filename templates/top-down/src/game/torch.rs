@@ -2,7 +2,7 @@ use quaso::{
     context::GameContext,
     game::GameObject,
     third_party::{
-        rand::{thread_rng, Rng},
+        rand::{rng, Rng},
         spitfire_draw::{
             particles::{
                 ParticleEmitter, ParticleInstance, ParticleSystem, ParticleSystemProcessor,
@@ -86,11 +86,11 @@ impl TorchParticleData {
         stabilization: RangeInclusive<f32>,
         lifetime_max: RangeInclusive<f32>,
     ) -> Self {
-        let mut rng = thread_rng();
-        let angle = rng.gen_range((-angle_range)..=angle_range);
-        let speed = rng.gen_range(speed);
-        let stabilization = rng.gen_range(stabilization);
-        let lifetime_max = rng.gen_range(lifetime_max);
+        let mut rng = rng();
+        let angle = rng.random_range((-angle_range)..=angle_range);
+        let speed = rng.random_range(speed);
+        let stabilization = rng.random_range(stabilization);
+        let lifetime_max = rng.random_range(lifetime_max);
         let (vx, vy) = angle.sin_cos();
         Self {
             position,

@@ -7,7 +7,10 @@ use quaso::{
     map::grid_world::{GridWorld, GridWorldLayer},
     third_party::{
         noise::{Fbm, MultiFractal, NoiseFn, SuperSimplex},
-        randscape::{Grid, NoiseGenerator, RemapGenerator, SubGenerator},
+        randscape::{
+            generators::{NoiseGenerator, RemapGenerator, SubGenerator},
+            grid::Grid,
+        },
         raui_core::widget::{
             component::text_box::TextBoxProps,
             unit::text::{TextBoxFont, TextBoxHorizontalAlign},
@@ -66,7 +69,7 @@ struct State {
 impl Default for State {
     fn default() -> Self {
         let mut height = Grid::<f64>::generate(
-            SIZE.into(),
+            SIZE,
             NoiseGenerator::new(Fbm::<SuperSimplex>::default().set_frequency(0.025)),
         );
         height.apply_all(RemapGenerator {
@@ -74,20 +77,18 @@ impl Default for State {
             to: 0.0..1.0,
         });
 
-        let gradient = Grid::<f64>::generate(
-            SIZE.into(),
-            |location: Vec2<usize>, size: Vec2<usize>, _| {
+        let gradient =
+            Grid::<f64>::generate(SIZE, |location: Vec2<usize>, size: Vec2<usize>, _| {
                 let center = size / 2;
                 let x = location.x.abs_diff(center.x) as f64;
                 let y = location.y.abs_diff(center.y) as f64;
                 let result = (x / center.x as f64).max(y / center.y as f64);
                 result * result
-            },
-        );
+            });
         height.apply_all(SubGenerator { other: &gradient });
 
         let mut biome = Grid::<f64>::generate(
-            SIZE.into(),
+            SIZE,
             NoiseGenerator::new(Fbm::<SuperSimplex>::new(42).set_frequency(0.05)),
         );
         biome.apply_all(RemapGenerator {

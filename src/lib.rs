@@ -3,6 +3,7 @@ pub mod third_party {
     pub use anput;
     pub use anput_generator;
     pub use anput_jobs;
+    pub use anput_promise;
     pub use emergent;
     pub use fontdue;
     pub use getrandom;
@@ -58,6 +59,7 @@ pub mod gamepad;
 pub mod map;
 pub mod scripting;
 pub mod tag;
+pub mod value;
 
 use config::Config;
 use game::GameInstance;

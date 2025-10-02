@@ -4,8 +4,7 @@ use quaso::{
     game::GameObject,
     third_party::{
         anput_jobs::coroutine::{with_all, yield_now},
-        rand::{thread_rng, Rng},
-        raui_core::ManagedLazy,
+        rand::{rng, Rng},
         spitfire_draw::{
             sprite::{Sprite, SpriteTexture},
             utils::{Drawable, ShaderRef, TextureRef},
@@ -13,6 +12,7 @@ use quaso::{
         spitfire_glow::renderer::GlowTextureFiltering,
         vek::{Rect, Transform, Vec2, Vec3},
     },
+    value::Ptr,
 };
 use std::{
     future::Future,
@@ -163,28 +163,27 @@ impl Default for SlotMachine {
 }
 
 impl SlotMachine {
-    pub async fn spin(managed_this: ManagedLazy<Self>) -> Option<usize> {
+    pub async fn spin(this: Ptr<Self>) -> Option<usize> {
         let (source_reels, target_reels) = {
-            let mut this = managed_this.write().unwrap();
-            if this.spinning {
+            if this.read().spinning {
                 return None;
             }
-            this.spinning = true;
-            let source_reels = this.reels;
-            let target_reels = this.reels.map(|reel| {
-                let index = thread_rng().gen_range(0..4) + BASELINE_SYMBOLS_ROLL;
+            this.write().spinning = true;
+            let source_reels = this.read().reels;
+            let target_reels = this.read().reels.map(|reel| {
+                let index = rng().random_range(0..4) + BASELINE_SYMBOLS_ROLL;
                 Reel::new(reel.index() + index, 0.0)
             });
             (source_reels, target_reels)
         };
 
-        defer(SlotMachine::hold_lever(managed_this.clone())).await;
+        defer(SlotMachine::hold_lever(this.clone())).await;
 
         with_all(
             (0..3)
                 .map(|index| {
                     Box::pin(SlotMachine::spin_reel(
-                        managed_this.clone(),
+                        this.clone(),
                         index,
                         (index as f32) * 0.5,
                         source_reels[index],
@@ -196,21 +195,18 @@ impl SlotMachine {
         )
         .await;
 
-        {
-            let mut this = managed_this.write().unwrap();
-            this.spinning = false;
-            let expected = this.reels[0].index() % 4;
-            for reel in this.reels.iter().skip(1) {
-                if reel.index() % 4 != expected {
-                    return None;
-                }
+        this.write().spinning = false;
+        let expected = this.read().reels[0].index() % 4;
+        for reel in this.read().reels.iter().skip(1) {
+            if reel.index() % 4 != expected {
+                return None;
             }
-            Some(expected)
         }
+        Some(expected)
     }
 
     async fn spin_reel(
-        managed_this: ManagedLazy<Self>,
+        this: Ptr<Self>,
         index: usize,
         delay: f32,
         source_reel: Reel,
@@ -222,34 +218,27 @@ impl SlotMachine {
             if timer > REEL_SPIN_DURATION {
                 break;
             }
-            {
-                let mut this = managed_this.write().unwrap();
-                let factor = (timer / REEL_SPIN_DURATION).clamp(0.0, 1.0);
-                let factor = factor * factor * (3.0 - 2.0 * factor);
-                this.reels[index] = source_reel.lerp(&target_reel, factor);
-            }
+
+            let factor = (timer / REEL_SPIN_DURATION).clamp(0.0, 1.0);
+            let factor = factor * factor * (3.0 - 2.0 * factor);
+            this.write().reels[index] = source_reel.lerp(&target_reel, factor);
+
             yield_now().await;
         }
-        {
-            let mut this = managed_this.write().unwrap();
-            this.reels[index].normalize();
-        }
+
+        this.write().reels[index].normalize();
     }
 
-    async fn hold_lever(managed_this: ManagedLazy<Self>) {
-        {
-            let mut this = managed_this.write().unwrap();
-            this.lever_down = true;
-        }
+    async fn hold_lever(this: Ptr<Self>) {
+        this.write().lever_down = true;
+
         let mut timer = 0.0;
         while timer < LEVER_DOWN_DURATION.min(REEL_SPIN_DURATION) {
             timer += async_delta_time().await;
             yield_now().await;
         }
-        {
-            let mut this = managed_this.write().unwrap();
-            this.lever_down = false;
-        }
+
+        this.write().lever_down = false;
     }
 }
 

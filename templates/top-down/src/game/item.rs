@@ -21,7 +21,7 @@ pub enum ItemKind {
 
 impl ItemKind {
     pub fn random() -> Self {
-        let index = random::<usize>() % 3;
+        let index = random::<u64>() as usize % 3;
         match index {
             0 => Self::Apple,
             1 => Self::Orange,

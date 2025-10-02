@@ -15,13 +15,13 @@ impl Default for EnemyAiPursueTask {
 
 impl Task<CharacterMemory<EnemyState>> for EnemyAiPursueTask {
     fn on_exit(&mut self, memory: &mut CharacterMemory<EnemyState>) {
-        let mut state = memory.state.write().unwrap();
+        let mut state = memory.state.write();
         state.ai.direction = 0.0.into();
         state.ai.attack = false;
     }
 
     fn on_update(&mut self, memory: &mut CharacterMemory<EnemyState>) {
-        let mut state = memory.state.write().unwrap();
+        let mut state = memory.state.write();
 
         if let Some(mut position) = state.ai.target_in_range_position {
             let side = position.x - state.sprite.transform.position.x;
