@@ -2,7 +2,7 @@ use crate::game::machine::SlotMachine;
 use quaso::{
     assets::shader::ShaderAsset,
     context::GameContext,
-    coroutine::async_lifetime_bound,
+    coroutine::async_heartbeat_bound,
     game::{GameObject, GameState, GameStateChange},
     third_party::{
         spitfire_glow::graphics::{CameraScaling, Shader},
@@ -104,9 +104,9 @@ impl GameState for Gameplay {
         }
         if self.action.get().is_down() {
             let machine = self.machine.pointer();
-            context.jobs.defer(async_lifetime_bound(
-                [machine.lifetime().state().clone()],
-                async {
+            context
+                .jobs
+                .defer(async_heartbeat_bound([machine.heartbeat()], async {
                     if let Some(index) = SlotMachine::spin(machine).await {
                         match index {
                             0 => println!("Payline: 1"),
@@ -116,8 +116,7 @@ impl GameState for Gameplay {
                             _ => {}
                         }
                     }
-                },
-            ));
+                }));
         }
     }
 

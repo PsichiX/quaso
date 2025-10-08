@@ -1,9 +1,8 @@
-use crate::context::AsyncGameContext;
+use crate::{context::AsyncGameContext, value::Heartbeat};
 use anput_jobs::{
     JobHandle, JobLocation, JobPriority,
     coroutine::{meta, spawn_on},
 };
-use intuicio_data::lifetime::LifetimeWeakState;
 use std::{
     future::poll_fn,
     pin::Pin,
@@ -44,11 +43,14 @@ impl Future for AsyncNextFrame {
     }
 }
 
-pub async fn async_lifetime_bound<F: Future>(
-    lifetimes: impl IntoIterator<Item = LifetimeWeakState>,
+pub async fn async_heartbeat_bound<F: Future>(
+    heartbeats: impl IntoIterator<Item = Heartbeat>,
     future: F,
 ) -> Option<F::Output> {
-    let lifetimes = lifetimes.into_iter().collect::<Vec<_>>();
+    let lifetimes = heartbeats
+        .into_iter()
+        .map(|heartbeat| heartbeat.0)
+        .collect::<Vec<_>>();
     let mut future = Box::pin(future);
     poll_fn(move |cx| {
         if lifetimes.iter().any(|state| state.upgrade().is_none()) {

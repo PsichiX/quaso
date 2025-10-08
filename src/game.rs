@@ -68,6 +68,12 @@ pub enum GameStateChange {
     Pop,
 }
 
+impl GameStateChange {
+    pub fn is_change(&self) -> bool {
+        !matches!(self, GameStateChange::Continue)
+    }
+}
+
 #[allow(unused_variables)]
 pub trait GameState {
     fn enter(&mut self, context: GameContext) {}
@@ -541,11 +547,28 @@ impl GameInstance {
             ]);
         }
 
-        match std::mem::take(&mut self.state_change) {
-            GameStateChange::Continue => {}
-            GameStateChange::Swap(mut state) => {
-                if let Some(mut state) = self.states.pop() {
-                    state.exit(GameContext {
+        loop {
+            match std::mem::take(&mut self.state_change) {
+                GameStateChange::Continue => {}
+                GameStateChange::Swap(mut state) => {
+                    if let Some(mut state) = self.states.pop() {
+                        state.exit(GameContext {
+                            graphics,
+                            draw: &mut self.draw,
+                            gui: &mut self.gui,
+                            input: &mut self.input,
+                            state_change: &mut self.state_change,
+                            assets: &mut self.assets,
+                            audio: &mut self.audio,
+                            globals: &mut self.globals,
+                            jobs: &mut self.jobs,
+                            async_next_frame: &self.async_next_frame,
+                        });
+                        if self.state_change.is_change() {
+                            continue;
+                        }
+                    }
+                    state.enter(GameContext {
                         graphics,
                         draw: &mut self.draw,
                         gui: &mut self.gui,
@@ -557,41 +580,14 @@ impl GameInstance {
                         jobs: &mut self.jobs,
                         async_next_frame: &self.async_next_frame,
                     });
+                    if self.state_change.is_change() {
+                        continue;
+                    }
+                    self.states.push(state);
+                    self.timer = Instant::now();
                 }
-                state.enter(GameContext {
-                    graphics,
-                    draw: &mut self.draw,
-                    gui: &mut self.gui,
-                    input: &mut self.input,
-                    state_change: &mut self.state_change,
-                    assets: &mut self.assets,
-                    audio: &mut self.audio,
-                    globals: &mut self.globals,
-                    jobs: &mut self.jobs,
-                    async_next_frame: &self.async_next_frame,
-                });
-                self.states.push(state);
-                self.timer = Instant::now();
-            }
-            GameStateChange::Push(mut state) => {
-                state.enter(GameContext {
-                    graphics,
-                    draw: &mut self.draw,
-                    gui: &mut self.gui,
-                    input: &mut self.input,
-                    state_change: &mut self.state_change,
-                    assets: &mut self.assets,
-                    audio: &mut self.audio,
-                    globals: &mut self.globals,
-                    jobs: &mut self.jobs,
-                    async_next_frame: &self.async_next_frame,
-                });
-                self.states.push(state);
-                self.timer = Instant::now();
-            }
-            GameStateChange::Pop => {
-                if let Some(mut state) = self.states.pop() {
-                    state.exit(GameContext {
+                GameStateChange::Push(mut state) => {
+                    state.enter(GameContext {
                         graphics,
                         draw: &mut self.draw,
                         gui: &mut self.gui,
@@ -603,9 +599,34 @@ impl GameInstance {
                         jobs: &mut self.jobs,
                         async_next_frame: &self.async_next_frame,
                     });
+                    if self.state_change.is_change() {
+                        continue;
+                    }
+                    self.states.push(state);
+                    self.timer = Instant::now();
                 }
-                self.timer = Instant::now();
+                GameStateChange::Pop => {
+                    if let Some(mut state) = self.states.pop() {
+                        state.exit(GameContext {
+                            graphics,
+                            draw: &mut self.draw,
+                            gui: &mut self.gui,
+                            input: &mut self.input,
+                            state_change: &mut self.state_change,
+                            assets: &mut self.assets,
+                            audio: &mut self.audio,
+                            globals: &mut self.globals,
+                            jobs: &mut self.jobs,
+                            async_next_frame: &self.async_next_frame,
+                        });
+                    }
+                    if self.state_change.is_change() {
+                        continue;
+                    }
+                    self.timer = Instant::now();
+                }
             }
+            break;
         }
     }
 

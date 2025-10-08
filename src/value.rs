@@ -1,11 +1,13 @@
 use intuicio_data::{
-    lifetime::{Lifetime, LifetimeLazy},
+    lifetime::{Lifetime, LifetimeLazy, LifetimeWeakState},
     managed::{DynamicManaged, DynamicManagedLazy, Managed, ManagedLazy},
 };
 
 pub use intuicio_data::lifetime::{ValueReadAccess as Read, ValueWriteAccess as Write};
 
-pub struct Val<T>(Managed<T>);
+pub struct Heartbeat(pub(crate) LifetimeWeakState);
+
+pub struct Val<T>(Box<Managed<T>>);
 
 impl<T> Default for Val<T>
 where
@@ -18,15 +20,19 @@ where
 
 impl<T> Val<T> {
     pub fn new(value: T) -> Self {
-        Self(Managed::new(value))
+        Self(Box::new(Managed::new(value)))
     }
 
     pub fn new_raw(value: Managed<T>) -> Self {
-        Self(value)
+        Self(Box::new(value))
     }
 
     pub fn into_inner(self) -> Managed<T> {
-        self.0
+        *self.0
+    }
+
+    pub fn heartbeat(&self) -> Heartbeat {
+        Heartbeat(self.0.lifetime().state().downgrade().clone())
     }
 
     pub fn lifetime(&self) -> &Lifetime {
@@ -47,7 +53,7 @@ impl<T> Val<T> {
 
     pub fn into_dynamic(self) -> DynVal {
         DynVal::new_raw(
-            self.0
+            (*self.0)
                 .into_dynamic()
                 .expect("Could not convert to dynamic managed value"),
         )
@@ -74,6 +80,10 @@ impl<T: ?Sized> Ptr<T> {
 
     pub fn into_inner(self) -> ManagedLazy<T> {
         self.0
+    }
+
+    pub fn heartbeat(&self) -> Heartbeat {
+        Heartbeat(self.0.lifetime().state().clone())
     }
 
     pub fn lifetime(&self) -> &LifetimeLazy {
@@ -110,6 +120,10 @@ impl DynVal {
 
     pub fn into_inner(self) -> DynamicManaged {
         self.0
+    }
+
+    pub fn heartbeat(&self) -> Heartbeat {
+        Heartbeat(self.0.lifetime().state().downgrade().clone())
     }
 
     pub fn lifetime(&self) -> &Lifetime {
@@ -158,6 +172,10 @@ impl DynPtr {
 
     pub fn into_inner(self) -> DynamicManagedLazy {
         self.0
+    }
+
+    pub fn heartbeat(&self) -> Heartbeat {
+        Heartbeat(self.0.lifetime().state().clone())
     }
 
     pub fn lifetime(&self) -> &LifetimeLazy {
