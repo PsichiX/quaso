@@ -14,8 +14,8 @@ use quaso::{
             utils::Rect,
         },
         raui_material::theme::{
-            new_all_white_theme, ThemeProps, ThemedButtonMaterial, ThemedImageMaterial,
-            ThemedTextMaterial,
+            ThemeProps, ThemedButtonMaterial, ThemedImageMaterial, ThemedTextMaterial,
+            new_all_white_theme,
         },
         vek::Vec2,
     },

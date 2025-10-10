@@ -21,7 +21,7 @@ use quaso::{
     gamepad::GamepadManager,
     third_party::{
         kira::sound::static_sound::StaticSoundHandle,
-        rand::{rng, Rng},
+        rand::{Rng, rng},
         raui_core::{
             layout::CoordsMappingScaling,
             widget::{
@@ -406,23 +406,23 @@ impl Gameplay {
         let space = space.read();
 
         for object_item in space.iter() {
-            if let SpaceObjectId::Item(item_id) = object_item.id {
-                if let Some(item) = self.items.get(&item_id) {
-                    for object in space.collisions(object_item, true) {
-                        match object.id {
-                            SpaceObjectId::Player => {
-                                self.player.state.write().consume_item(item);
-                                Events::write(Event::KillItem { id: item_id });
-                                Events::write(Event::PlaySound("collect".into()));
-                            }
-                            SpaceObjectId::Enemy(enemy_id) => {
-                                if let Some(enemy) = self.enemies.get_mut(&enemy_id) {
-                                    enemy.state.write().consume_item(item);
-                                    Events::write(Event::KillItem { id: item_id });
-                                }
-                            }
-                            _ => {}
+            if let SpaceObjectId::Item(item_id) = object_item.id
+                && let Some(item) = self.items.get(&item_id)
+            {
+                for object in space.collisions(object_item, true) {
+                    match object.id {
+                        SpaceObjectId::Player => {
+                            self.player.state.write().consume_item(item);
+                            Events::write(Event::KillItem { id: item_id });
+                            Events::write(Event::PlaySound("collect".into()));
                         }
+                        SpaceObjectId::Enemy(enemy_id) => {
+                            if let Some(enemy) = self.enemies.get_mut(&enemy_id) {
+                                enemy.state.write().consume_item(item);
+                                Events::write(Event::KillItem { id: item_id });
+                            }
+                        }
+                        _ => {}
                     }
                 }
             }

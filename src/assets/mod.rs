@@ -74,25 +74,40 @@ pub struct AssetPackage {
 
 impl AssetPackage {
     pub fn from_directory(directory: impl AsRef<Path>) -> Result<Self, Box<dyn Error>> {
+        Self::from_directory_filtered(directory, |path| {
+            Some(path.file_name().unwrap().to_str().unwrap().to_owned())
+        })
+    }
+
+    pub fn from_directory_filtered(
+        directory: impl AsRef<Path>,
+        filter: impl Fn(&Path) -> Option<String>,
+    ) -> Result<Self, Box<dyn Error>> {
         fn visit_dirs(
             dir: &Path,
             root: &str,
             registry: &mut AssetPackageRegistry,
             content: &mut Cursor<Vec<u8>>,
+            filter: &impl Fn(&Path) -> Option<String>,
         ) -> std::io::Result<()> {
             if dir.is_dir() {
                 for entry in std::fs::read_dir(dir)? {
                     let entry = entry?;
                     let path = entry.path();
                     let name = path.file_name().unwrap().to_str().unwrap();
-                    let name = if root.is_empty() {
-                        name.to_owned()
-                    } else {
-                        format!("{root}/{name}")
-                    };
                     if path.is_dir() {
-                        visit_dirs(&path, &name, registry, content)?;
-                    } else {
+                        let name = if root.is_empty() {
+                            name.to_owned()
+                        } else {
+                            format!("{root}/{name}")
+                        };
+                        visit_dirs(&path, &name, registry, content, filter)?;
+                    } else if let Some(name) = filter(&path) {
+                        let name = if root.is_empty() {
+                            name.to_owned()
+                        } else {
+                            format!("{root}/{name}")
+                        };
                         let bytes = std::fs::read(path)?;
                         let start = content.position() as usize;
                         content.write_all(&bytes)?;
@@ -107,7 +122,7 @@ impl AssetPackage {
         let directory = directory.as_ref();
         let mut registry = AssetPackageRegistry::default();
         let mut content = Cursor::new(Vec::default());
-        visit_dirs(directory, "", &mut registry, &mut content)?;
+        visit_dirs(directory, "", &mut registry, &mut content, &filter)?;
         Ok(AssetPackage {
             registry,
             content: content.into_inner(),

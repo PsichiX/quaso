@@ -1,7 +1,7 @@
 use crate::game::{enemy::EnemyState, item::Item};
 use quaso::{
     third_party::{
-        rstar::{Envelope, Point, PointDistance, RTree, RTreeObject, AABB},
+        rstar::{AABB, Envelope, Point, PointDistance, RTree, RTreeObject},
         typid::ID,
         vek::Vec2,
     },

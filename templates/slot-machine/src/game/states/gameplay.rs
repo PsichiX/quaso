@@ -106,6 +106,7 @@ impl GameState for Gameplay {
             let machine = self.machine.pointer();
             context
                 .jobs
+                .unwrap()
                 .defer(async_heartbeat_bound([machine.heartbeat()], async {
                     if let Some(index) = SlotMachine::spin(machine).await {
                         match index {

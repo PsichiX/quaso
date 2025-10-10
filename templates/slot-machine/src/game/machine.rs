@@ -4,7 +4,7 @@ use quaso::{
     game::GameObject,
     third_party::{
         anput_jobs::coroutine::{with_all, yield_now},
-        rand::{rng, Rng},
+        rand::{Rng, rng},
         spitfire_draw::{
             sprite::{Sprite, SpriteTexture},
             utils::{Drawable, ShaderRef, TextureRef},

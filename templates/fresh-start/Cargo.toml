@@ -1,7 +1,7 @@
 [package]
 name = "fresh-start"
 version = "0.1.0"
-edition = "2021"
+edition = "2024"
 publish = false
 
 [lib]
@@ -9,11 +9,11 @@ name = "game_web"
 crate-type = ["cdylib"]
 
 [dependencies.quaso]
-version = "0.44"
+version = "0.45"
 path = "../.."
 
 [build-dependencies.quaso]
-version = "0.44"
+version = "0.45"
 path = "../.."
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]

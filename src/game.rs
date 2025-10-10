@@ -4,7 +4,7 @@ use crate::{
         texture::TextureAssetSubsystem,
     },
     audio::Audio,
-    context::{AsyncGameContext, GameContext},
+    context::GameContext,
     coroutine::AsyncNextFrame,
     value::{DynPtr, Ptr, Val},
 };
@@ -38,6 +38,7 @@ use std::{
     any::{Any, TypeId},
     cell::{LazyCell, Ref, RefCell, RefMut},
     collections::BTreeMap,
+    pin::Pin,
 };
 #[cfg(target_arch = "wasm32")]
 use winit::{
@@ -89,6 +90,13 @@ pub trait GameState {
     fn draw_gui(&mut self, context: GameContext) {}
 
     fn event(&mut self, globals: &mut GameGlobals, event: &Event<()>) {}
+
+    fn timeline(
+        &mut self,
+        context: GameContext,
+    ) -> Pin<Box<dyn Future<Output = ()> + Send + Sync>> {
+        Box::pin(async {})
+    }
 }
 
 pub trait GameSubsystem {
@@ -278,7 +286,7 @@ pub struct GameInstance {
     audio: Audio,
     timer: Instant,
     fixed_timer: Instant,
-    states: Vec<Box<dyn GameState>>,
+    states: Vec<(Box<dyn GameState>, JobHandle<()>)>,
     state_change: GameStateChange,
     subsystems: Vec<Box<dyn GameSubsystem>>,
     globals: GameGlobals,
@@ -425,7 +433,7 @@ impl GameInstance {
                     assets: &mut self.assets,
                     audio: &mut self.audio,
                     globals: &mut self.globals,
-                    jobs: &mut self.jobs,
+                    jobs: Some(&mut self.jobs),
                     async_next_frame: &self.async_next_frame,
                 },
                 delta_time,
@@ -433,7 +441,7 @@ impl GameInstance {
         }
         self.assets.maintain().unwrap();
 
-        if let Some(state) = self.states.last_mut() {
+        if let Some((state, _)) = self.states.last_mut() {
             self.timer = Instant::now();
             state.update(
                 GameContext {
@@ -445,7 +453,7 @@ impl GameInstance {
                     assets: &mut self.assets,
                     audio: &mut self.audio,
                     globals: &mut self.globals,
-                    jobs: &mut self.jobs,
+                    jobs: Some(&mut self.jobs),
                     async_next_frame: &self.async_next_frame,
                 },
                 delta_time,
@@ -460,7 +468,7 @@ impl GameInstance {
         };
         let fixed_step = if fixed_delta_time > fixed_delta_time_limit {
             self.fixed_timer = Instant::now();
-            if let Some(state) = self.states.last_mut() {
+            if let Some((state, _)) = self.states.last_mut() {
                 state.fixed_update(
                     GameContext {
                         graphics,
@@ -471,7 +479,7 @@ impl GameInstance {
                         assets: &mut self.assets,
                         audio: &mut self.audio,
                         globals: &mut self.globals,
-                        jobs: &mut self.jobs,
+                        jobs: Some(&mut self.jobs),
                         async_next_frame: &self.async_next_frame,
                     },
                     fixed_delta_time,
@@ -485,7 +493,7 @@ impl GameInstance {
         self.draw.begin_frame(graphics);
         self.draw.push_shader(&ShaderRef::name(self.image_shader));
         self.draw.push_blending(GlowBlending::Alpha);
-        if let Some(state) = self.states.last_mut() {
+        if let Some((state, _)) = self.states.last_mut() {
             state.draw(GameContext {
                 graphics,
                 draw: &mut self.draw,
@@ -495,12 +503,12 @@ impl GameInstance {
                 assets: &mut self.assets,
                 audio: &mut self.audio,
                 globals: &mut self.globals,
-                jobs: &mut self.jobs,
+                jobs: Some(&mut self.jobs),
                 async_next_frame: &self.async_next_frame,
             });
         }
         self.gui.begin_frame();
-        if let Some(state) = self.states.last_mut() {
+        if let Some((state, _)) = self.states.last_mut() {
             state.draw_gui(GameContext {
                 graphics,
                 draw: &mut self.draw,
@@ -510,7 +518,7 @@ impl GameInstance {
                 assets: &mut self.assets,
                 audio: &mut self.audio,
                 globals: &mut self.globals,
-                jobs: &mut self.jobs,
+                jobs: Some(&mut self.jobs),
                 async_next_frame: &self.async_next_frame,
             });
         }
@@ -527,7 +535,7 @@ impl GameInstance {
         }
 
         {
-            let mut async_context = AsyncGameContext {
+            let mut async_context = GameContext {
                 graphics,
                 draw: &mut self.draw,
                 gui: &mut self.gui,
@@ -536,6 +544,7 @@ impl GameInstance {
                 assets: &mut self.assets,
                 audio: &mut self.audio,
                 globals: &mut self.globals,
+                jobs: None,
                 async_next_frame: &self.async_next_frame,
             };
             let (async_context_lazy, _async_context_lifetime) =
@@ -551,7 +560,8 @@ impl GameInstance {
             match std::mem::take(&mut self.state_change) {
                 GameStateChange::Continue => {}
                 GameStateChange::Swap(mut state) => {
-                    if let Some(mut state) = self.states.pop() {
+                    if let Some((mut state, job)) = self.states.pop() {
+                        job.cancel();
                         state.exit(GameContext {
                             graphics,
                             draw: &mut self.draw,
@@ -561,7 +571,7 @@ impl GameInstance {
                             assets: &mut self.assets,
                             audio: &mut self.audio,
                             globals: &mut self.globals,
-                            jobs: &mut self.jobs,
+                            jobs: Some(&mut self.jobs),
                             async_next_frame: &self.async_next_frame,
                         });
                         if self.state_change.is_change() {
@@ -577,13 +587,29 @@ impl GameInstance {
                         assets: &mut self.assets,
                         audio: &mut self.audio,
                         globals: &mut self.globals,
-                        jobs: &mut self.jobs,
+                        jobs: Some(&mut self.jobs),
                         async_next_frame: &self.async_next_frame,
                     });
                     if self.state_change.is_change() {
                         continue;
                     }
-                    self.states.push(state);
+                    let future = state.timeline(GameContext {
+                        graphics,
+                        draw: &mut self.draw,
+                        gui: &mut self.gui,
+                        input: &mut self.input,
+                        state_change: &mut self.state_change,
+                        assets: &mut self.assets,
+                        audio: &mut self.audio,
+                        globals: &mut self.globals,
+                        jobs: Some(&mut self.jobs),
+                        async_next_frame: &self.async_next_frame,
+                    });
+                    if self.state_change.is_change() {
+                        continue;
+                    }
+                    let job = self.jobs.defer(future);
+                    self.states.push((state, job));
                     self.timer = Instant::now();
                 }
                 GameStateChange::Push(mut state) => {
@@ -596,17 +622,34 @@ impl GameInstance {
                         assets: &mut self.assets,
                         audio: &mut self.audio,
                         globals: &mut self.globals,
-                        jobs: &mut self.jobs,
+                        jobs: Some(&mut self.jobs),
                         async_next_frame: &self.async_next_frame,
                     });
                     if self.state_change.is_change() {
                         continue;
                     }
-                    self.states.push(state);
+                    let future = state.timeline(GameContext {
+                        graphics,
+                        draw: &mut self.draw,
+                        gui: &mut self.gui,
+                        input: &mut self.input,
+                        state_change: &mut self.state_change,
+                        assets: &mut self.assets,
+                        audio: &mut self.audio,
+                        globals: &mut self.globals,
+                        jobs: Some(&mut self.jobs),
+                        async_next_frame: &self.async_next_frame,
+                    });
+                    if self.state_change.is_change() {
+                        continue;
+                    }
+                    let job = self.jobs.defer(future);
+                    self.states.push((state, job));
                     self.timer = Instant::now();
                 }
                 GameStateChange::Pop => {
-                    if let Some(mut state) = self.states.pop() {
+                    if let Some((mut state, job)) = self.states.pop() {
+                        job.cancel();
                         state.exit(GameContext {
                             graphics,
                             draw: &mut self.draw,
@@ -616,7 +659,7 @@ impl GameInstance {
                             assets: &mut self.assets,
                             audio: &mut self.audio,
                             globals: &mut self.globals,
-                            jobs: &mut self.jobs,
+                            jobs: Some(&mut self.jobs),
                             async_next_frame: &self.async_next_frame,
                         });
                     }
@@ -637,7 +680,7 @@ impl GameInstance {
             }
             self.input.on_event(event);
         }
-        if let Some(state) = self.states.last_mut() {
+        if let Some((state, _)) = self.states.last_mut() {
             state.event(&mut self.globals, event);
         }
         !self.states.is_empty() || !matches!(self.state_change, GameStateChange::Continue)

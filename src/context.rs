@@ -18,23 +18,11 @@ pub struct GameContext<'a> {
     pub assets: &'a mut AssetDatabase,
     pub audio: &'a mut Audio,
     pub globals: &'a mut GameGlobals,
-    pub jobs: &'a mut GameJobs,
+    pub jobs: Option<&'a mut GameJobs>,
     pub async_next_frame: &'a AsyncNextFrame,
 }
 
-pub struct AsyncGameContext<'a> {
-    pub graphics: &'a mut Graphics<Vertex>,
-    pub draw: &'a mut DrawContext,
-    pub gui: &'a mut GuiContext,
-    pub input: &'a mut InputContext,
-    pub state_change: &'a mut GameStateChange,
-    pub assets: &'a mut AssetDatabase,
-    pub audio: &'a mut Audio,
-    pub globals: &'a mut GameGlobals,
-    pub async_next_frame: &'a AsyncNextFrame,
-}
-
-impl<'a> AsyncGameContext<'a> {
+impl<'a> GameContext<'a> {
     pub(crate) fn fork(other: &'a mut Self) -> Self {
         Self {
             graphics: other.graphics,
@@ -45,6 +33,7 @@ impl<'a> AsyncGameContext<'a> {
             assets: other.assets,
             audio: other.audio,
             globals: other.globals,
+            jobs: None,
             async_next_frame: other.async_next_frame,
         }
     }

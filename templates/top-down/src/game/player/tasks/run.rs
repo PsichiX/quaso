@@ -7,7 +7,7 @@ use quaso::{
     character::CharacterMemory,
     third_party::{
         emergent::task::Task,
-        rand::{rng, Rng},
+        rand::{Rng, rng},
         vek::Vec3,
     },
 };

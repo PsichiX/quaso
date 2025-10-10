@@ -106,7 +106,7 @@ impl GameState for State {
         // This allows us to read and write the position in a thread-safe manner.
         let position = self.position.pointer();
         // Start a coroutine to handle the interpolated movement.
-        context.jobs.defer(async move {
+        context.jobs.unwrap().defer(async move {
             // interpolated movement never ends.
             loop {
                 // Generate a random target position within a range.

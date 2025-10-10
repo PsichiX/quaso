@@ -2,7 +2,7 @@ pub mod machine;
 pub mod states;
 
 use self::states::gameplay::Gameplay;
-use quaso::{assets::make_memory_database, config::Config, game::GameInstance, GameLauncher};
+use quaso::{GameLauncher, assets::make_memory_database, config::Config, game::GameInstance};
 
 pub fn main() {
     GameLauncher::new(

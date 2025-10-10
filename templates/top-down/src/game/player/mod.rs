@@ -242,15 +242,14 @@ impl PlayerState {
                 value,
                 instigator,
             } = event
+                && *instigator == Instigator::Enemy
             {
-                if *instigator == Instigator::Enemy {
-                    let distance = position.distance(self.sprite.transform.position.xy());
-                    if distance <= *range {
-                        self.blink_seconds = 0.15;
-                        self.health = self.health.saturating_sub(*value);
-                        if self.health == 0 {
-                            Events::write(Event::KillPlayer);
-                        }
+                let distance = position.distance(self.sprite.transform.position.xy());
+                if distance <= *range {
+                    self.blink_seconds = 0.15;
+                    self.health = self.health.saturating_sub(*value);
+                    if self.health == 0 {
+                        Events::write(Event::KillPlayer);
                     }
                 }
             }

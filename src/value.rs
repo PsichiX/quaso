@@ -47,8 +47,16 @@ impl<T> Val<T> {
         self.0.read().expect("Could not read value")
     }
 
+    pub fn read_checked(&self) -> Option<Read<'_, T>> {
+        self.0.read()
+    }
+
     pub fn write(&mut self) -> Write<'_, T> {
         self.0.write().expect("Could not write value")
+    }
+
+    pub fn write_checked(&mut self) -> Option<Write<'_, T>> {
+        self.0.write()
     }
 
     pub fn into_dynamic(self) -> DynVal {
@@ -94,8 +102,16 @@ impl<T: ?Sized> Ptr<T> {
         self.0.read().expect("Could not read value")
     }
 
+    pub fn read_checked(&self) -> Option<Read<'_, T>> {
+        self.0.read()
+    }
+
     pub fn write(&self) -> Write<'_, T> {
         self.0.write().expect("Could not write value")
+    }
+
+    pub fn write_checked(&self) -> Option<Write<'_, T>> {
+        self.0.write()
     }
 
     pub fn into_dynamic(self) -> DynPtr {
@@ -138,8 +154,16 @@ impl DynVal {
         self.0.read::<T>().expect("Could not read value")
     }
 
+    pub fn read_checked<T>(&self) -> Option<Read<'_, T>> {
+        self.0.read::<T>()
+    }
+
     pub fn write<T>(&mut self) -> Write<'_, T> {
         self.0.write::<T>().expect("Could not write value")
+    }
+
+    pub fn write_checked<T>(&mut self) -> Option<Write<'_, T>> {
+        self.0.write::<T>()
     }
 
     pub fn into_typed<T>(self) -> Val<T> {
@@ -186,8 +210,16 @@ impl DynPtr {
         self.0.read::<T>().expect("Could not read value")
     }
 
+    pub fn read_checked<T>(&self) -> Option<Read<'_, T>> {
+        self.0.read::<T>()
+    }
+
     pub fn write<T>(&self) -> Write<'_, T> {
         self.0.write::<T>().expect("Could not write value")
+    }
+
+    pub fn write_checked<T>(&self) -> Option<Write<'_, T>> {
+        self.0.write::<T>()
     }
 
     pub fn into_typed<T>(self) -> Ptr<T> {

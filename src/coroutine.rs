@@ -1,4 +1,4 @@
-use crate::{context::AsyncGameContext, value::Heartbeat};
+use crate::{context::GameContext, value::Heartbeat};
 use anput_jobs::{
     JobHandle, JobLocation, JobPriority,
     coroutine::{meta, spawn_on},
@@ -58,20 +58,34 @@ pub async fn async_heartbeat_bound<F: Future>(
             Poll::Ready(None)
         } else {
             cx.waker().wake_by_ref();
-            future
-                .as_mut()
-                .poll(cx)
-                .map(|output: <F as Future>::Output| Some(output))
+            future.as_mut().poll(cx).map(Some)
         }
     })
     .await
 }
 
-pub async fn async_game_context<'a>() -> Option<AsyncGameContext<'a>> {
-    meta::<AsyncGameContext>("context")
+pub async fn async_cancellable<F: Future>(
+    condition: impl Fn() -> bool,
+    future: F,
+) -> Option<F::Output> {
+    let mut future = Box::pin(future);
+    poll_fn(move |cx| {
+        if condition() {
+            cx.waker().wake_by_ref();
+            Poll::Ready(None)
+        } else {
+            cx.waker().wake_by_ref();
+            future.as_mut().poll(cx).map(Some)
+        }
+    })
+    .await
+}
+
+pub async fn async_game_context<'a>() -> Option<GameContext<'a>> {
+    meta::<GameContext>("context")
         .await
         .and_then(|context| unsafe { context.as_mut_ptr() })
-        .and_then(|context| unsafe { context.as_mut() }.map(AsyncGameContext::fork))
+        .and_then(|context| unsafe { context.as_mut() }.map(GameContext::fork))
 }
 
 pub async fn async_delta_time() -> f32 {
