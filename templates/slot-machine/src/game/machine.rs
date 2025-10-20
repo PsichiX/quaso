@@ -3,7 +3,7 @@ use quaso::{
     coroutine::{async_delta_time, defer},
     game::GameObject,
     third_party::{
-        anput_jobs::coroutine::{with_all, yield_now},
+        moirai::coroutine::{with_all, yield_now},
         rand::{Rng, rng},
         spitfire_draw::{
             sprite::{Sprite, SpriteTexture},

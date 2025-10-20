@@ -8,9 +8,6 @@ use crate::{
     coroutine::AsyncNextFrame,
     value::{DynPtr, Ptr, Val},
 };
-use anput_jobs::{
-    AllJobsHandle, JobContext, JobHandle, JobLocation, JobPriority, Jobs, ScopedJobs,
-};
 use gilrs::Gilrs;
 #[cfg(not(target_arch = "wasm32"))]
 use glutin::{
@@ -21,6 +18,7 @@ use glutin::{
 use instant::Instant;
 use intuicio_data::managed::DynamicManagedLazy;
 use keket::database::AssetDatabase;
+use moirai::{AllJobsHandle, JobContext, JobHandle, JobLocation, JobPriority, Jobs, ScopedJobs};
 use spitfire_draw::{
     context::DrawContext,
     utils::{ShaderRef, Vertex},

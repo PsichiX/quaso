@@ -1,9 +1,6 @@
 pub mod third_party {
     pub use anim8;
     pub use anput;
-    pub use anput_generator;
-    pub use anput_jobs;
-    pub use anput_promise;
     pub use emergent;
     pub use fontdue;
     pub use getrandom;
@@ -20,6 +17,7 @@ pub mod third_party {
     pub use intuicio_frontend_simpleton;
     pub use keket;
     pub use kira;
+    pub use moirai;
     pub use nodio;
     pub use noise;
     pub use rand;

@@ -1,5 +1,6 @@
 use crate::{context::GameContext, value::Heartbeat};
-use anput_jobs::{
+use keket::database::handle::AssetHandle;
+use moirai::{
     JobHandle, JobLocation, JobPriority,
     coroutine::{meta, spawn_on},
 };
@@ -105,6 +106,16 @@ pub async fn async_delay(mut seconds: f32) {
 
 pub async fn async_next_frame() {
     if let Some(context) = async_game_context().await {
+        context.async_next_frame.clone().await;
+    }
+}
+
+pub async fn async_wait_for_asset(handle: AssetHandle) {
+    loop {
+        let context = async_game_context().await.unwrap();
+        if handle.is_ready_to_use(context.assets) {
+            break;
+        }
         context.async_next_frame.clone().await;
     }
 }

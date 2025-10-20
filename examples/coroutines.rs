@@ -1,4 +1,3 @@
-use anput_jobs::coroutine::yield_now;
 use quaso::{
     GameLauncher,
     assets::{make_directory_database, shader::ShaderAsset},
@@ -7,6 +6,7 @@ use quaso::{
     coroutine::{async_delay, async_delta_time},
     game::{GameInstance, GameState, GameStateChange},
     third_party::{
+        moirai::coroutine::yield_now,
         spitfire_draw::{
             sprite::{Sprite, SpriteTexture},
             utils::{Drawable, TextureRef},
