@@ -3,7 +3,7 @@ use crate::game::{
     utils::events::{Event, Events},
 };
 use quaso::{
-    animation::frame::{FrameAnimation, NamedAnimation},
+    animation::frame::{FrameAnimation, NamedFrameAnimation},
     character::CharacterMemory,
     third_party::{
         emergent::task::Task,
@@ -14,18 +14,18 @@ use quaso::{
 
 #[derive(Debug, Clone)]
 pub struct PlayerRunTask {
-    animation: NamedAnimation,
+    animation: NamedFrameAnimation,
     speed: f32,
 }
 
 impl Default for PlayerRunTask {
     fn default() -> Self {
         Self {
-            animation: NamedAnimation {
+            animation: NamedFrameAnimation {
                 animation: FrameAnimation::new(1..25)
                     .looping()
-                    .event(6, "footstep")
-                    .event(18, "footstep"),
+                    .event(5, "footstep")
+                    .event(17, "footstep"),
                 id: "player/run".to_owned(),
             },
             speed: 80.0,

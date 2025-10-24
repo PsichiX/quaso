@@ -1,19 +1,19 @@
 use crate::game::player::PlayerState;
 use quaso::{
-    animation::frame::{FrameAnimation, NamedAnimation},
+    animation::frame::{FrameAnimation, NamedFrameAnimation},
     character::CharacterMemory,
     third_party::emergent::task::Task,
 };
 
 #[derive(Debug, Clone)]
 pub struct PlayerIdleTask {
-    animation: NamedAnimation,
+    animation: NamedFrameAnimation,
 }
 
 impl Default for PlayerIdleTask {
     fn default() -> Self {
         Self {
-            animation: NamedAnimation {
+            animation: NamedFrameAnimation {
                 animation: FrameAnimation::new(1..2).looping(),
                 id: "player/idle".to_owned(),
             },

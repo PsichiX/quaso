@@ -1,6 +1,7 @@
 use quaso::{
     GameLauncher,
-    assets::{make_directory_database, shader::ShaderAsset},
+    animation::frame::SpriteFrameAnimation,
+    assets::{anim_texture::AnimTextureAsset, make_directory_database, shader::ShaderAsset},
     config::Config,
     context::GameContext,
     game::{GameInstance, GameState, GameStateChange},
@@ -81,17 +82,25 @@ impl GameState for Preloader {
             )
             .unwrap();
 
-        context.assets.ensure("texture://ferris.png").unwrap();
-
         context.assets.ensure("font://roboto.ttf").unwrap();
 
-        *context.state_change = GameStateChange::Swap(Box::new(State::default()));
+        context
+            .assets
+            .ensure("animtexture://ferris-bongo.gif")
+            .unwrap();
+    }
+
+    fn update(&mut self, context: GameContext, _: f32) {
+        if !context.assets.is_busy() {
+            *context.state_change = GameStateChange::Swap(Box::new(State::default()));
+        }
     }
 }
 
 #[derive(Default)]
 struct State {
     ferris: Sprite,
+    ferris_anim: SpriteFrameAnimation,
     movement: CardinalInputCombinator,
     exit: InputActionRef,
 }
@@ -104,6 +113,16 @@ impl GameState for State {
             filtering: GlowTextureFiltering::Linear,
         })
         .pivot(0.5.into());
+
+        self.ferris_anim = context
+            .assets
+            .ensure("animtexture://ferris-bongo.gif")
+            .unwrap()
+            .access::<&AnimTextureAsset>(context.assets)
+            .build_animation(TextureRef::name("ferris-bongo.gif"));
+        self.ferris_anim.animation.speed = 0.5;
+        self.ferris_anim.animation.looping = true;
+        self.ferris_anim.animation.play();
 
         let move_left = InputActionRef::default();
         let move_right = InputActionRef::default();
@@ -147,6 +166,9 @@ impl GameState for State {
     }
 
     fn fixed_update(&mut self, context: GameContext, delta_time: f32) {
+        self.ferris_anim.animation.update(delta_time);
+        self.ferris_anim.apply_to_sprite(&mut self.ferris, 0);
+
         let movement = Vec2::<f32>::from(self.movement.get());
         self.ferris.transform.position += movement * SPEED * delta_time;
 

@@ -3,20 +3,20 @@ use crate::game::{
     utils::events::{Event, Events, Instigator},
 };
 use quaso::{
-    animation::frame::{FrameAnimation, NamedAnimation},
+    animation::frame::{FrameAnimation, NamedFrameAnimation},
     character::CharacterMemory,
     third_party::emergent::task::Task,
 };
 
 #[derive(Debug, Clone)]
 pub struct EnemyAttackTask {
-    animation: NamedAnimation,
+    animation: NamedFrameAnimation,
 }
 
 impl Default for EnemyAttackTask {
     fn default() -> Self {
         Self {
-            animation: NamedAnimation {
+            animation: NamedFrameAnimation {
                 animation: FrameAnimation::new(1..9),
                 id: "enemy/attack".to_owned(),
             },

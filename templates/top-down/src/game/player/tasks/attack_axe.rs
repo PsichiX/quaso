@@ -3,21 +3,21 @@ use crate::game::{
     utils::events::{Event, Events, Instigator},
 };
 use quaso::{
-    animation::frame::{FrameAnimation, NamedAnimation},
+    animation::frame::{FrameAnimation, NamedFrameAnimation},
     character::CharacterMemory,
     third_party::emergent::task::Task,
 };
 
 #[derive(Debug, Clone)]
 pub struct PlayerAttackAxeTask {
-    animation: NamedAnimation,
+    animation: NamedFrameAnimation,
 }
 
 impl Default for PlayerAttackAxeTask {
     fn default() -> Self {
         Self {
-            animation: NamedAnimation {
-                animation: FrameAnimation::new(1..9).event(5, "hit"),
+            animation: NamedFrameAnimation {
+                animation: FrameAnimation::new(1..9).event(4, "hit"),
                 id: "player/axe".to_owned(),
             },
         }

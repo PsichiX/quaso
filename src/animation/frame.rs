@@ -1,4 +1,4 @@
-use spitfire_draw::utils::TextureRef;
+use spitfire_draw::{sprite::Sprite, utils::TextureRef};
 use std::{
     collections::{BTreeMap, HashSet},
     ops::Range,
@@ -7,35 +7,59 @@ use vek::Rect;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct FrameAnimation {
-    frames: Range<usize>,
-    current: Option<usize>,
-    accumulator: f32,
+    /// [(image index, frame duration)]
+    frames: Vec<(usize, f32)>,
+    /// (frame index, accumulator)?
+    current: Option<(usize, f32)>,
+    /// {frame index: [event ids]}
     events: BTreeMap<usize, HashSet<String>>,
-    pub fps: f32,
+    pub speed: f32,
     pub is_playing: bool,
     pub looping: bool,
 }
 
-impl FrameAnimation {
-    pub fn new(frames: Range<usize>) -> Self {
+impl Default for FrameAnimation {
+    fn default() -> Self {
         Self {
-            frames,
+            frames: Vec::new(),
             current: None,
-            accumulator: 0.0,
             events: Default::default(),
-            fps: 30.0,
+            speed: 30.0,
             is_playing: false,
             looping: false,
         }
     }
+}
 
-    pub fn event(mut self, frame: usize, id: impl ToString) -> Self {
-        self.events.entry(frame).or_default().insert(id.to_string());
+impl FrameAnimation {
+    pub fn new(images: Range<usize>) -> Self {
+        let mut result = Self::default();
+        for index in images {
+            result.frames.push((index, 1.0));
+        }
+        result
+    }
+
+    pub fn add_frame(&mut self, image_index: usize, duration: f32) {
+        self.frames.push((image_index, duration));
+    }
+
+    pub fn frame(mut self, image_index: usize, duration: f32) -> Self {
+        self.add_frame(image_index, duration);
         self
     }
 
-    pub fn fps(mut self, value: f32) -> Self {
-        self.fps = value;
+    pub fn add_event(&mut self, frame: usize, id: impl ToString) {
+        self.events.entry(frame).or_default().insert(id.to_string());
+    }
+
+    pub fn event(mut self, frame: usize, id: impl ToString) -> Self {
+        self.add_event(frame, id);
+        self
+    }
+
+    pub fn speed(mut self, value: f32) -> Self {
+        self.speed = value;
         self
     }
 
@@ -54,13 +78,11 @@ impl FrameAnimation {
             return;
         }
         self.is_playing = true;
-        self.accumulator = 0.0;
-        self.current = Some(self.frames.start);
+        self.current = Some((0, 0.0));
     }
 
     pub fn stop(&mut self) {
         self.is_playing = false;
-        self.accumulator = 0.0;
         self.current = None;
     }
 
@@ -68,58 +90,70 @@ impl FrameAnimation {
         if self.frames.is_empty() || !self.is_playing {
             return Default::default();
         }
-        let Some(mut current) = self.current else {
+        let Some((mut current_index, mut accumulator)) = self.current else {
             return Default::default();
         };
         let mut result = HashSet::default();
-        self.accumulator += (delta_time * self.fps).max(0.0);
-        while self.accumulator >= 1.0 {
-            self.accumulator -= 1.0;
-            if let Some(events) = self.events.get(&current) {
+        accumulator += (delta_time * self.speed).max(0.0);
+        while accumulator >= self.frames[current_index].1 {
+            accumulator -= self.frames[current_index].1;
+            if let Some(events) = self.events.get(&current_index) {
                 result.extend(events.iter().map(|id| id.as_str()));
             }
-            current += 1;
-            if current >= self.frames.end {
+            current_index += 1;
+            if current_index >= self.frames.len() {
                 if self.looping {
-                    current = self.frames.start;
+                    self.current = Some((0, accumulator));
+                    current_index = 0;
                 } else {
                     self.is_playing = false;
-                    self.accumulator = 0.0;
                     self.current = None;
                     return result;
                 }
             }
         }
-        self.current = Some(current);
+        self.current = Some((current_index, accumulator));
         result
     }
 
-    pub fn current_frame(&self) -> Option<usize> {
+    pub fn current_image(&self) -> Option<usize> {
         self.current
+            .and_then(|(index, _)| self.frames.get(index))
+            .map(|(image_index, _)| *image_index)
     }
 }
 
 #[derive(Debug, Clone)]
-pub struct NamedAnimation {
+pub struct NamedFrameAnimation {
     pub animation: FrameAnimation,
     pub id: String,
 }
 
 #[derive(Debug, Clone)]
-pub struct SpriteAnimationFrame {
+pub struct SpriteAnimationImage {
     pub texture: TextureRef,
     pub region: Rect<f32, f32>,
     pub page: f32,
 }
 
-#[derive(Debug, Clone)]
-pub struct SpriteAnimation {
+#[derive(Debug, Default, Clone)]
+pub struct SpriteFrameAnimation {
     pub animation: FrameAnimation,
-    pub frames: BTreeMap<usize, SpriteAnimationFrame>,
+    pub images: BTreeMap<usize, SpriteAnimationImage>,
 }
 
-impl SpriteAnimation {
-    pub fn current_frame(&self) -> Option<&SpriteAnimationFrame> {
-        self.frames.get(&self.animation.current_frame()?)
+impl SpriteFrameAnimation {
+    pub fn current_image(&self) -> Option<&SpriteAnimationImage> {
+        self.images.get(&self.animation.current_image()?)
+    }
+
+    pub fn apply_to_sprite(&self, sprite: &mut Sprite, texture_index: usize) {
+        if let Some(image) = self.current_image()
+            && let Some(texture) = sprite.textures.get_mut(texture_index)
+        {
+            texture.texture = image.texture.clone();
+            sprite.region = image.region;
+            sprite.page = image.page;
+        }
     }
 }

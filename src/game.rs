@@ -1,7 +1,7 @@
 use crate::{
     assets::{
-        font::FontAssetSubsystem, shader::ShaderAssetSubsystem, sound::SoundAssetSubsystem,
-        texture::TextureAssetSubsystem,
+        anim_texture::AnimTextureAssetSubsystem, font::FontAssetSubsystem,
+        shader::ShaderAssetSubsystem, sound::SoundAssetSubsystem, texture::TextureAssetSubsystem,
     },
     audio::Audio,
     context::GameContext,
@@ -314,6 +314,7 @@ impl Default for GameInstance {
             subsystems: vec![
                 Box::new(ShaderAssetSubsystem),
                 Box::new(TextureAssetSubsystem),
+                Box::new(AnimTextureAssetSubsystem),
                 Box::new(FontAssetSubsystem),
                 Box::new(SoundAssetSubsystem),
             ],

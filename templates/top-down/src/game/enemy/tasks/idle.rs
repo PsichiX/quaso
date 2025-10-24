@@ -1,20 +1,20 @@
 use crate::game::enemy::EnemyState;
 use quaso::{
-    animation::frame::{FrameAnimation, NamedAnimation},
+    animation::frame::{FrameAnimation, NamedFrameAnimation},
     character::CharacterMemory,
     third_party::emergent::task::Task,
 };
 
 #[derive(Debug, Clone)]
 pub struct EnemyIdleTask {
-    animation: NamedAnimation,
+    animation: NamedFrameAnimation,
 }
 
 impl Default for EnemyIdleTask {
     fn default() -> Self {
         Self {
-            animation: NamedAnimation {
-                animation: FrameAnimation::new(1..6).fps(10.0).looping(),
+            animation: NamedFrameAnimation {
+                animation: FrameAnimation::new(1..6).speed(10.0).looping(),
                 id: "enemy/idle".to_owned(),
             },
         }

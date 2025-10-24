@@ -13,7 +13,7 @@ use crate::game::{
     utils::events::{Event, Events, Instigator},
 };
 use quaso::{
-    animation::frame::NamedAnimation,
+    animation::frame::NamedFrameAnimation,
     character::{Character, CharacterController},
     context::GameContext,
     game::GameObject,
@@ -227,8 +227,8 @@ impl PlayerState {
         Character::new(state, task, controller)
     }
 
-    pub fn apply_animation(&mut self, animation: &NamedAnimation) {
-        if let Some(frame) = animation.animation.current_frame() {
+    pub fn apply_animation(&mut self, animation: &NamedFrameAnimation) {
+        if let Some(frame) = animation.animation.current_image() {
             self.sprite.textures[0].texture =
                 TextureRef::name(format!("{}/{}", animation.id, frame));
         }

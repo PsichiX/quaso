@@ -1,5 +1,5 @@
 use quaso::{
-    animation::frame::{FrameAnimation, NamedAnimation},
+    animation::frame::{FrameAnimation, NamedFrameAnimation},
     character::CharacterMemory,
     third_party::{
         emergent::task::Task,
@@ -11,15 +11,15 @@ use crate::game::enemy::EnemyState;
 
 #[derive(Debug, Clone)]
 pub struct EnemyRunTask {
-    animation: NamedAnimation,
+    animation: NamedFrameAnimation,
     speed: f32,
 }
 
 impl Default for EnemyRunTask {
     fn default() -> Self {
         Self {
-            animation: NamedAnimation {
-                animation: FrameAnimation::new(1..9).fps(10.0).looping(),
+            animation: NamedFrameAnimation {
+                animation: FrameAnimation::new(1..9).speed(10.0).looping(),
                 id: "enemy/run".to_owned(),
             },
             speed: 60.0,
