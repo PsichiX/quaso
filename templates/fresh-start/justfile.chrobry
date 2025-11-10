@@ -60,9 +60,7 @@ package-windows:
     cargo build --release
     rm -rf ./dist/windows/
     mkdir -p ./dist/windows/
-    cp -rf ./assets ./dist/windows/
     cp -f ./target/release/%{ $PROJECT_NAME }%.exe ./dist/windows/
-    cp -f ./README.md ./dist/windows/
     powershell Compress-Archive -Force "./dist/windows/*" ./dist/%{ $PROJECT_NAME }%-windows.zip
 
 package-web:
@@ -72,6 +70,5 @@ package-web:
     cp -f ./index.html ./dist/web/
     cp -f ./pkg/game_web.js ./dist/web/pkg/
     cp -f ./pkg/game_web_bg.wasm ./dist/web/pkg/
-    cp -f ./README.md ./dist/web/
     powershell Compress-Archive -Force "./dist/web/*" ./dist/%{ $PROJECT_NAME }%-web.zip
 ```

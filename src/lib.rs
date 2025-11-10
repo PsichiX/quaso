@@ -28,6 +28,7 @@ pub mod third_party {
     pub use raui_material;
     pub use rstar;
     pub use rusty_spine;
+    pub use send_wrapper;
     pub use serde;
     pub use spitfire_core;
     pub use spitfire_draw;
@@ -38,6 +39,7 @@ pub mod third_party {
     #[cfg(not(target_arch = "wasm32"))]
     pub use std::time::Instant;
     pub use toml;
+    pub use tracing;
     pub use typid;
     pub use vek;
     #[cfg(target_arch = "wasm32")]
@@ -54,6 +56,7 @@ pub mod context;
 pub mod coroutine;
 pub mod game;
 pub mod gamepad;
+pub mod interactible;
 pub mod map;
 pub mod scripting;
 pub mod tag;

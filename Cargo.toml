@@ -14,6 +14,13 @@ documentation = "https://docs.rs/quaso"
 readme = "README.md"
 exclude = ["resources/", "templates/"]
 
+[features]
+debug_automatic_glGetError = [
+    "spitfire-glow/debug_automatic_glGetError",
+    "spitfire-draw/debug_automatic_glGetError",
+    "spitfire-gui/debug_automatic_glGetError",
+]
+
 [dependencies]
 spitfire-core = "0.36"
 spitfire-glow = "0.36"
@@ -34,10 +41,15 @@ randscape = "0.4"
 anput = "0.21"
 moirai = "0.1"
 nodio = "0.4"
-keket = "0.15"
+keket = "0.17"
 emergent = "1.7"
 typid = "1"
-image = "0.25"
+image = { version = "0.25", default-features = false, features = [
+    "png",
+    "gif",
+    "webp",
+    "jpeg",
+] }
 fontdue = "0.9"
 vek = "0.17"
 serde = { version = "1", features = ["derive"] }
@@ -51,6 +63,8 @@ gilrs = "0.11"
 anim8 = "1.4"
 rusty_spine = "0.8"
 zip = { version = "5.1", default-features = false, features = ["deflate"] }
+tracing = "0.1"
+send_wrapper = "0.6"
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 winit = "0.28"

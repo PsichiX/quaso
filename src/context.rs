@@ -2,6 +2,7 @@ use crate::{
     audio::Audio,
     coroutine::AsyncNextFrame,
     game::{GameGlobals, GameJobs, GameStateChange},
+    value::Heartbeat,
 };
 use keket::database::AssetDatabase;
 use spitfire_draw::{context::DrawContext, utils::Vertex};
@@ -20,6 +21,7 @@ pub struct GameContext<'a> {
     pub globals: &'a mut GameGlobals,
     pub jobs: Option<&'a mut GameJobs>,
     pub async_next_frame: &'a AsyncNextFrame,
+    pub state_heartbeat: &'a Heartbeat,
 }
 
 impl<'a> GameContext<'a> {
@@ -35,6 +37,7 @@ impl<'a> GameContext<'a> {
             globals: other.globals,
             jobs: None,
             async_next_frame: other.async_next_frame,
+            state_heartbeat: other.state_heartbeat,
         }
     }
 }

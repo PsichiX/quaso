@@ -143,6 +143,26 @@ pub struct SpriteFrameAnimation {
 }
 
 impl SpriteFrameAnimation {
+    pub fn event(mut self, frame: usize, id: impl ToString) -> Self {
+        self.animation = self.animation.event(frame, id);
+        self
+    }
+
+    pub fn speed(mut self, value: f32) -> Self {
+        self.animation = self.animation.speed(value);
+        self
+    }
+
+    pub fn playing(mut self) -> Self {
+        self.animation = self.animation.playing();
+        self
+    }
+
+    pub fn looping(mut self) -> Self {
+        self.animation = self.animation.looping();
+        self
+    }
+
     pub fn current_image(&self) -> Option<&SpriteAnimationImage> {
         self.images.get(&self.animation.current_image()?)
     }

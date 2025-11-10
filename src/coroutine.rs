@@ -83,10 +83,10 @@ pub async fn async_cancellable<F: Future>(
 }
 
 pub async fn async_game_context<'a>() -> Option<GameContext<'a>> {
-    meta::<GameContext>("context")
-        .await
-        .and_then(|context| unsafe { context.as_mut_ptr() })
-        .and_then(|context| unsafe { context.as_mut() }.map(GameContext::fork))
+    let context = meta::<GameContext>("context").await?;
+    let context = unsafe { context.as_mut_ptr() }?;
+    let context = unsafe { context.as_mut() }?;
+    Some(GameContext::fork(context))
 }
 
 pub async fn async_delta_time() -> f32 {
@@ -120,10 +120,20 @@ pub async fn async_wait_for_asset(handle: AssetHandle) {
     }
 }
 
+pub async fn async_wait_for_assets(handles: impl IntoIterator<Item = AssetHandle>) {
+    for handle in handles {
+        async_wait_for_asset(handle).await;
+    }
+}
+
 pub async fn defer<F>(job: F) -> JobHandle<F::Output>
 where
     F: Future + Send + Sync + 'static,
     <F as Future>::Output: Send,
 {
     spawn_on(JobLocation::Local, JobPriority::Normal, job).await
+}
+
+pub async fn async_remap<T, F: Future>(future: F, f: impl FnOnce(F::Output) -> T) -> T {
+    f(future.await)
 }

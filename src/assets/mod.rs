@@ -7,15 +7,16 @@ pub mod spine;
 pub mod texture;
 
 use crate::assets::{
-    anim_texture::AnimTextureAssetProtocol, font::FontAssetProtocol, ldtk::LdtkAssetProtocol,
-    shader::ShaderAssetProtocol, sound::SoundAssetProtocol, spine::SpineAssetProtocol,
-    texture::TextureAssetProtocol,
+    anim_texture::make_anim_texture_asset_protocol, font::FontAssetProtocol,
+    ldtk::LdtkAssetProtocol, shader::ShaderAssetProtocol, sound::SoundAssetProtocol,
+    spine::SpineAssetProtocol, texture::TextureAssetProtocol,
 };
 use keket::{
     database::{AssetDatabase, path::AssetPath},
     fetch::{
         AssetFetch,
         container::{ContainerAssetFetch, ContainerPartialFetch},
+        throttled::{ThrottledAssetFetch, ThrottledAssetFetchStrategy},
     },
     protocol::{bytes::BytesAssetProtocol, group::GroupAssetProtocol, text::TextAssetProtocol},
 };
@@ -23,6 +24,7 @@ use serde::{Deserialize, Serialize};
 use std::{
     collections::HashMap,
     error::Error,
+    hash::{DefaultHasher, Hash, Hasher},
     io::{Cursor, Read, Write},
     ops::Range,
     path::Path,
@@ -42,7 +44,7 @@ pub fn make_database(fetch: impl AssetFetch) -> AssetDatabase {
         .with_protocol(GroupAssetProtocol)
         .with_protocol(ShaderAssetProtocol)
         .with_protocol(TextureAssetProtocol)
-        .with_protocol(AnimTextureAssetProtocol)
+        .with_protocol(make_anim_texture_asset_protocol())
         .with_protocol(FontAssetProtocol)
         .with_protocol(SoundAssetProtocol)
         .with_protocol(SpineAssetProtocol)
@@ -56,11 +58,31 @@ pub fn make_memory_database(package: &[u8]) -> Result<AssetDatabase, Box<dyn Err
     )))
 }
 
+pub fn make_throttled_memory_database(
+    package: &[u8],
+    strategy: ThrottledAssetFetchStrategy,
+) -> Result<AssetDatabase, Box<dyn Error>> {
+    Ok(make_database(ThrottledAssetFetch::new(
+        ContainerAssetFetch::new(AssetPackage::decode(package)?),
+        strategy,
+    )))
+}
+
 pub fn make_directory_database(
     directory: impl AsRef<Path>,
 ) -> Result<AssetDatabase, Box<dyn Error>> {
     Ok(make_database(ContainerAssetFetch::new(
         AssetPackage::from_directory(directory)?,
+    )))
+}
+
+pub fn make_throttled_directory_database(
+    directory: impl AsRef<Path>,
+    strategy: ThrottledAssetFetchStrategy,
+) -> Result<AssetDatabase, Box<dyn Error>> {
+    Ok(make_database(ThrottledAssetFetch::new(
+        ContainerAssetFetch::new(AssetPackage::from_directory(directory)?),
+        strategy,
     )))
 }
 
@@ -157,6 +179,14 @@ impl AssetPackage {
 
     pub fn paths(&self) -> impl Iterator<Item = &str> {
         self.registry.mappings.keys().map(|key| key.as_str())
+    }
+
+    pub fn paths_and_content_hashes(&self) -> impl Iterator<Item = (&str, u64)> {
+        self.registry.mappings.iter().map(move |(key, range)| {
+            let mut hasher = DefaultHasher::new();
+            self.content[range.clone()].hash(&mut hasher);
+            (key.as_str(), hasher.finish())
+        })
     }
 }
 

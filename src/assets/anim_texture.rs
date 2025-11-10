@@ -4,15 +4,14 @@ use crate::{
     context::GameContext,
     game::GameSubsystem,
 };
-use anput::world::World;
+use anput::bundle::DynamicBundle;
 use image::{
-    AnimationDecoder, ImageFormat, RgbaImage,
-    codecs::{gif::GifDecoder, png::PngDecoder},
+    AnimationDecoder, ImageFormat, Rgba, RgbaImage,
+    codecs::{gif::GifDecoder, png::PngDecoder, webp::WebPDecoder},
 };
-use keket::{
-    database::{handle::AssetHandle, path::AssetPathStatic},
-    protocol::AssetProtocol,
-};
+use keket::{database::path::AssetPathStatic, protocol::future::FutureAssetProtocol};
+use moirai::coroutine::yield_now;
+use send_wrapper::SendWrapper;
 use spitfire_draw::utils::TextureRef;
 use spitfire_glow::renderer::GlowTextureFormat;
 use std::{error::Error, io::Cursor};
@@ -99,51 +98,71 @@ impl GameSubsystem for AnimTextureAssetSubsystem {
     }
 }
 
-pub struct AnimTextureAssetProtocol;
+pub fn make_anim_texture_asset_protocol() -> FutureAssetProtocol {
+    FutureAssetProtocol::new("animtexture")
+        .process(|inspector, bytes| process_bytes(inspector.path().unwrap().into_static(), bytes))
+}
 
-impl AssetProtocol for AnimTextureAssetProtocol {
-    fn name(&self) -> &str {
-        "animtexture"
-    }
+async fn process_bytes(
+    path: AssetPathStatic,
+    bytes: Vec<u8>,
+) -> Result<DynamicBundle, Box<dyn Error>> {
+    let format = image::guess_format(&bytes)
+        .map_err(|_| format!("Failed to read texture format: {:?}", path.path()))?;
 
-    fn process_bytes(
-        &mut self,
-        handle: AssetHandle,
-        storage: &mut World,
-        bytes: Vec<u8>,
-    ) -> Result<(), Box<dyn Error>> {
-        let path = storage.component::<true, AssetPathStatic>(handle.entity())?;
-        let format = image::guess_format(&bytes)
-            .map_err(|_| format!("Failed to read texture format: {:?}", path.path()))?;
-        drop(path);
+    let mut frames = Vec::new();
 
-        let frames = match format {
-            ImageFormat::Gif => GifDecoder::new(Cursor::new(bytes))
-                .map_err(|_| "Failed to decode GIF anim texture")?
-                .into_frames()
-                .collect_frames()
-                .map_err(|_| "Failed to collect GIF frames")?,
-            ImageFormat::Png => PngDecoder::new(Cursor::new(bytes))
-                .map_err(|_| "Failed to decode APNG anim texture")?
-                .apng()
-                .map_err(|_| "Failed to decode APNG anim texture")?
-                .into_frames()
-                .collect_frames()
-                .map_err(|_| "Failed to collect APNG frames")?,
-            _ => return Err(format!("Unsupported anim texture format: {:?}", format).into()),
-        }
-        .into_iter()
-        .map(|frame| {
-            let (numer, denom) = frame.delay().numer_denom_ms();
-            AnimTextureFrame {
-                image: frame.into_buffer(),
-                duration: (numer as f32 / denom as f32) * 0.001,
+    match format {
+        ImageFormat::Gif => {
+            let decoder = GifDecoder::new(Cursor::new(bytes))
+                .map_err(|_| "Failed to decode GIF anim texture")?;
+            let mut iter = SendWrapper::new(decoder.into_frames());
+            while let Some(frame) = iter.next() {
+                let frame = frame?;
+                let (numer, denom) = frame.delay().numer_denom_ms();
+                frames.push(AnimTextureFrame {
+                    image: frame.into_buffer(),
+                    duration: (numer as f32 / denom as f32) * 0.001,
+                });
+                yield_now().await;
             }
-        })
-        .collect::<Vec<AnimTextureFrame>>();
-
-        storage.insert(handle.entity(), (AnimTextureAsset { frames },))?;
-
-        Ok(())
+        }
+        ImageFormat::Png => {
+            let decoder = PngDecoder::new(Cursor::new(bytes))
+                .map_err(|_| "Failed to decode APNG anim texture")?;
+            let apng = decoder
+                .apng()
+                .map_err(|_| "Failed to decode APNG anim texture")?;
+            let mut iter = SendWrapper::new(apng.into_frames());
+            while let Some(frame) = iter.next() {
+                let frame = frame?;
+                let (numer, denom) = frame.delay().numer_denom_ms();
+                frames.push(AnimTextureFrame {
+                    image: frame.into_buffer(),
+                    duration: (numer as f32 / denom as f32) * 0.001,
+                });
+                yield_now().await;
+            }
+        }
+        ImageFormat::WebP => {
+            let mut decoder = WebPDecoder::new(Cursor::new(bytes))
+                .map_err(|_| "Failed to decode WebP anim texture")?;
+            decoder.set_background_color(Rgba([0, 0, 0, 0])).unwrap();
+            let mut iter = SendWrapper::new(decoder.into_frames());
+            while let Some(frame) = iter.next() {
+                let frame = frame?;
+                let (numer, denom) = frame.delay().numer_denom_ms();
+                frames.push(AnimTextureFrame {
+                    image: frame.into_buffer(),
+                    duration: (numer as f32 / denom as f32) * 0.001,
+                });
+                yield_now().await;
+            }
+        }
+        _ => return Err(format!("Unsupported anim texture format: {:?}", format).into()),
     }
+
+    Ok(DynamicBundle::new(AnimTextureAsset { frames })
+        .ok()
+        .unwrap())
 }

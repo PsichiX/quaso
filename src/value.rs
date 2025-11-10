@@ -5,6 +5,7 @@ use intuicio_data::{
 
 pub use intuicio_data::lifetime::{ValueReadAccess as Read, ValueWriteAccess as Write};
 
+#[derive(Clone)]
 pub struct Heartbeat(pub(crate) LifetimeWeakState);
 
 pub struct Val<T>(Box<Managed<T>>);
@@ -57,6 +58,13 @@ impl<T> Val<T> {
 
     pub fn write_checked(&mut self) -> Option<Write<'_, T>> {
         self.0.write()
+    }
+
+    pub fn set(&mut self, value: T)
+    where
+        T: Sized,
+    {
+        *self.write() = value;
     }
 
     pub fn into_dynamic(self) -> DynVal {
@@ -114,6 +122,13 @@ impl<T: ?Sized> Ptr<T> {
         self.0.write()
     }
 
+    pub fn set(&self, value: T)
+    where
+        T: Sized,
+    {
+        *self.write() = value;
+    }
+
     pub fn into_dynamic(self) -> DynPtr {
         DynPtr::new_raw(self.0.into_dynamic())
     }
@@ -164,6 +179,13 @@ impl DynVal {
 
     pub fn write_checked<T>(&mut self) -> Option<Write<'_, T>> {
         self.0.write::<T>()
+    }
+
+    pub fn set<T>(&mut self, value: T)
+    where
+        T: Sized,
+    {
+        *self.write() = value;
     }
 
     pub fn into_typed<T>(self) -> Val<T> {
@@ -220,6 +242,13 @@ impl DynPtr {
 
     pub fn write_checked<T>(&self) -> Option<Write<'_, T>> {
         self.0.write::<T>()
+    }
+
+    pub fn set<T>(&self, value: T)
+    where
+        T: Sized,
+    {
+        *self.write() = value;
     }
 
     pub fn into_typed<T>(self) -> Ptr<T> {
