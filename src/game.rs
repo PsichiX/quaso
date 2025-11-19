@@ -1,7 +1,8 @@
 use crate::{
     assets::{
         anim_texture::AnimTextureAssetSubsystem, font::FontAssetSubsystem,
-        shader::ShaderAssetSubsystem, sound::SoundAssetSubsystem, texture::TextureAssetSubsystem,
+        gltf::GltfAssetSubsystem, shader::ShaderAssetSubsystem, sound::SoundAssetSubsystem,
+        texture::TextureAssetSubsystem,
     },
     audio::Audio,
     context::GameContext,
@@ -284,6 +285,7 @@ pub struct GameInstance {
     audio: Audio,
     timer: Instant,
     fixed_timer: Instant,
+    #[allow(clippy::type_complexity)]
     states: Vec<(Box<dyn GameState>, JobHandle<()>, Val<()>)>,
     state_change: GameStateChange,
     subsystems: Vec<Box<dyn GameSubsystem>>,
@@ -317,6 +319,7 @@ impl Default for GameInstance {
                 Box::new(AnimTextureAssetSubsystem),
                 Box::new(FontAssetSubsystem),
                 Box::new(SoundAssetSubsystem),
+                Box::new(GltfAssetSubsystem),
             ],
             globals: Default::default(),
             jobs: Default::default(),

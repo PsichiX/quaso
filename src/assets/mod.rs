@@ -1,5 +1,6 @@
 pub mod anim_texture;
 pub mod font;
+pub mod gltf;
 pub mod ldtk;
 pub mod shader;
 pub mod sound;
@@ -8,8 +9,8 @@ pub mod texture;
 
 use crate::assets::{
     anim_texture::make_anim_texture_asset_protocol, font::FontAssetProtocol,
-    ldtk::LdtkAssetProtocol, shader::ShaderAssetProtocol, sound::SoundAssetProtocol,
-    spine::SpineAssetProtocol, texture::TextureAssetProtocol,
+    gltf::make_gltf_asset_protocol, ldtk::LdtkAssetProtocol, shader::ShaderAssetProtocol,
+    sound::SoundAssetProtocol, spine::SpineAssetProtocol, texture::TextureAssetProtocol,
 };
 use keket::{
     database::{AssetDatabase, path::AssetPath},
@@ -49,6 +50,7 @@ pub fn make_database(fetch: impl AssetFetch) -> AssetDatabase {
         .with_protocol(SoundAssetProtocol)
         .with_protocol(SpineAssetProtocol)
         .with_protocol(LdtkAssetProtocol)
+        .with_protocol(make_gltf_asset_protocol())
         .with_fetch(fetch)
 }
 

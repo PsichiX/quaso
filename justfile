@@ -51,7 +51,13 @@ example NAME="hello_world":
 publish:
     cargo publish --no-verify
 
+package-template NAME:
+    rm -rf ./templates/{{NAME}}/dist/
+    rm -rf ./templates/{{NAME}}/pkg/
+    rm -f ./templates/{{NAME}}/assets.pack
+    powershell Compress-Archive -Force "./templates/{{NAME}}/*" ./target/{{NAME}}-template.zip
+
 package-templates:
-    powershell Compress-Archive -Force "./templates/fresh-start/*" ./target/fresh-start-template.zip
-    powershell Compress-Archive -Force "./templates/slot-machine/*" ./target/slot-machine-template.zip
-    powershell Compress-Archive -Force "./templates/top-down/*" ./target/top-down-template.zip
+    just package-template "fresh-start"
+    just package-template "slot-machine"
+    just package-template "top-down"

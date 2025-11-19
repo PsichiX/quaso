@@ -15,7 +15,7 @@ use quaso::{
                 text::TextBoxVerticalAlign,
             },
         },
-        raui_immediate::apply_shared_props,
+        raui_immediate::{ImSharedProps, apply},
         raui_immediate_widgets::{
             core::{containers::nav_vertical_box, image_box},
             material::text_paper,
@@ -33,7 +33,7 @@ impl GameState for MainMenu {
     }
 
     fn draw_gui(&mut self, context: GameContext) {
-        apply_shared_props(make_theme(), || {
+        apply(ImSharedProps(make_theme()), || {
             image_box(ImageBoxProps {
                 content_keep_aspect_ratio: Some(ImageBoxAspectRatio {
                     horizontal_alignment: 0.5,

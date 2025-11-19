@@ -9,7 +9,10 @@ use image::{
     AnimationDecoder, ImageFormat, Rgba, RgbaImage,
     codecs::{gif::GifDecoder, png::PngDecoder, webp::WebPDecoder},
 };
-use keket::{database::path::AssetPathStatic, protocol::future::FutureAssetProtocol};
+use keket::{
+    database::{handle::AssetHandle, path::AssetPathStatic},
+    protocol::future::{FutureAssetProtocol, FutureStorageAccess},
+};
 use moirai::coroutine::yield_now;
 use send_wrapper::SendWrapper;
 use spitfire_draw::utils::TextureRef;
@@ -99,14 +102,18 @@ impl GameSubsystem for AnimTextureAssetSubsystem {
 }
 
 pub fn make_anim_texture_asset_protocol() -> FutureAssetProtocol {
-    FutureAssetProtocol::new("animtexture")
-        .process(|inspector, bytes| process_bytes(inspector.path().unwrap().into_static(), bytes))
+    FutureAssetProtocol::new("animtexture").process(process_bytes)
 }
 
 async fn process_bytes(
-    path: AssetPathStatic,
+    handle: AssetHandle,
+    access: FutureStorageAccess,
     bytes: Vec<u8>,
 ) -> Result<DynamicBundle, Box<dyn Error>> {
+    let access = access.access()?;
+    let access = access.read().unwrap();
+    let path = access.component::<true, AssetPathStatic>(handle.entity())?;
+
     let format = image::guess_format(&bytes)
         .map_err(|_| format!("Failed to read texture format: {:?}", path.path()))?;
 
@@ -117,6 +124,7 @@ async fn process_bytes(
             let decoder = GifDecoder::new(Cursor::new(bytes))
                 .map_err(|_| "Failed to decode GIF anim texture")?;
             let mut iter = SendWrapper::new(decoder.into_frames());
+            #[allow(clippy::while_let_on_iterator)]
             while let Some(frame) = iter.next() {
                 let frame = frame?;
                 let (numer, denom) = frame.delay().numer_denom_ms();
@@ -134,6 +142,7 @@ async fn process_bytes(
                 .apng()
                 .map_err(|_| "Failed to decode APNG anim texture")?;
             let mut iter = SendWrapper::new(apng.into_frames());
+            #[allow(clippy::while_let_on_iterator)]
             while let Some(frame) = iter.next() {
                 let frame = frame?;
                 let (numer, denom) = frame.delay().numer_denom_ms();
@@ -149,6 +158,7 @@ async fn process_bytes(
                 .map_err(|_| "Failed to decode WebP anim texture")?;
             decoder.set_background_color(Rgba([0, 0, 0, 0])).unwrap();
             let mut iter = SendWrapper::new(decoder.into_frames());
+            #[allow(clippy::while_let_on_iterator)]
             while let Some(frame) = iter.next() {
                 let frame = frame?;
                 let (numer, denom) = frame.delay().numer_denom_ms();
