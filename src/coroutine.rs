@@ -1,8 +1,8 @@
 use crate::{context::GameContext, value::Heartbeat};
 use keket::database::handle::AssetHandle;
 use moirai::{
-    JobHandle, JobLocation, JobPriority,
-    coroutine::{meta, spawn_on},
+    coroutine::{meta, spawn},
+    jobs::{JobHandle, JobLocation},
 };
 use std::{
     future::poll_fn,
@@ -131,7 +131,7 @@ where
     F: Future + Send + Sync + 'static,
     <F as Future>::Output: Send,
 {
-    spawn_on(JobLocation::Local, JobPriority::Normal, job).await
+    spawn(JobLocation::Local, job).await
 }
 
 pub async fn async_remap<T, F: Future>(future: F, f: impl FnOnce(F::Output) -> T) -> T {

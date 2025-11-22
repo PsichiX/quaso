@@ -19,7 +19,9 @@ use glutin::{
 use instant::Instant;
 use intuicio_data::managed::DynamicManagedLazy;
 use keket::database::AssetDatabase;
-use moirai::{AllJobsHandle, JobContext, JobHandle, JobLocation, JobPriority, Jobs, ScopedJobs};
+use moirai::jobs::{
+    AllJobsHandle, JobContext, JobHandle, JobLocation, JobOptions, JobPriority, Jobs, ScopedJobs,
+};
 use spitfire_draw::{
     context::DrawContext,
     utils::{ShaderRef, Vertex},
@@ -182,7 +184,7 @@ impl GameJobs {
         &self,
         job: impl Future<Output = T> + Send + Sync + 'static,
     ) -> JobHandle<T> {
-        self.spawn_on(JobLocation::Local, JobPriority::Normal, job)
+        self.spawn(JobLocation::Local, job)
     }
 
     pub fn defer_with_meta<T: Send>(
@@ -190,34 +192,20 @@ impl GameJobs {
         meta: impl IntoIterator<Item = (String, DynPtr)>,
         job: impl Future<Output = T> + Send + Sync + 'static,
     ) -> JobHandle<T> {
-        self.spawn_on_with_meta(JobLocation::Local, JobPriority::Normal, meta, job)
+        self.spawn(
+            JobOptions::default()
+                .location(JobLocation::Local)
+                .meta_many(meta.into_iter().map(|(id, ptr)| (id, ptr.into_inner()))),
+            job,
+        )
     }
 
-    pub fn spawn_on<T: Send>(
+    pub fn spawn<T: Send>(
         &self,
-        location: JobLocation,
-        priority: JobPriority,
+        options: impl Into<JobOptions>,
         job: impl Future<Output = T> + Send + Sync + 'static,
     ) -> JobHandle<T> {
-        self.jobs.read().spawn_on(location, priority, job).unwrap()
-    }
-
-    pub fn spawn_on_with_meta<T: Send>(
-        &self,
-        location: JobLocation,
-        priority: JobPriority,
-        meta: impl IntoIterator<Item = (String, DynPtr)>,
-        job: impl Future<Output = T> + Send + Sync + 'static,
-    ) -> JobHandle<T> {
-        self.jobs
-            .read()
-            .spawn_on_with_meta(
-                location,
-                priority,
-                meta.into_iter().map(|(id, ptr)| (id, ptr.into_inner())),
-                job,
-            )
-            .unwrap()
+        self.jobs.read().spawn(options, job).unwrap()
     }
 
     pub fn scoped_spawn<T: Send + 'static>(
@@ -226,9 +214,8 @@ impl GameJobs {
     ) -> Option<T> {
         let jobs = self.jobs.read();
         let mut scope = ScopedJobs::<T>::new(&jobs);
-        let _ = scope.spawn_on(
-            JobLocation::other_than_current_thread(),
-            JobPriority::High,
+        let _ = scope.spawn(
+            (JobLocation::other_than_current_thread(), JobPriority::High),
             job,
         );
         scope.execute().pop()
