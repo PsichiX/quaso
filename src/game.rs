@@ -20,7 +20,7 @@ use instant::Instant;
 use intuicio_data::managed::DynamicManagedLazy;
 use keket::database::AssetDatabase;
 use moirai::jobs::{
-    AllJobsHandle, JobContext, JobHandle, JobLocation, JobOptions, JobPriority, Jobs, ScopedJobs,
+    AllJobsHandle, JobContext, JobHandle, JobLocation, JobOptions, Jobs, ScopedJobs,
 };
 use spitfire_draw::{
     context::DrawContext,
@@ -208,34 +208,11 @@ impl GameJobs {
         self.jobs.read().spawn(options, job).unwrap()
     }
 
-    pub fn scoped_spawn<T: Send + 'static>(
-        &self,
-        job: impl Future<Output = T> + Send + Sync,
-    ) -> Option<T> {
-        let jobs = self.jobs.read();
-        let mut scope = ScopedJobs::<T>::new(&jobs);
-        let _ = scope.spawn(
-            (JobLocation::other_than_current_thread(), JobPriority::High),
-            job,
-        );
-        scope.execute().pop()
-    }
-
     pub fn broadcast<T: Send>(
         &self,
         job: impl Fn(JobContext) -> T + Send + Sync + 'static,
     ) -> AllJobsHandle<T> {
         self.jobs.read().broadcast(job).unwrap()
-    }
-
-    pub fn scoped_broadcast<T: Send + 'static>(
-        &self,
-        job: impl Fn(JobContext) -> T + Send + Sync,
-    ) -> Vec<T> {
-        let jobs = self.jobs.read();
-        let mut scope = ScopedJobs::<T>::new(&jobs);
-        let _ = scope.broadcast(job);
-        scope.execute()
     }
 
     pub fn broadcast_n<T: Send>(
@@ -246,15 +223,14 @@ impl GameJobs {
         self.jobs.read().broadcast_n(work_groups, job).unwrap()
     }
 
-    pub fn scoped_broadcast_n<T: Send + 'static>(
-        &self,
-        work_groups: usize,
-        job: impl Fn(JobContext) -> T + Send + Sync,
-    ) -> Vec<T> {
-        let jobs = self.jobs.read();
-        let mut scope = ScopedJobs::<T>::new(&jobs);
-        let _ = scope.broadcast_n(work_groups, job);
-        scope.execute()
+    pub fn scope<'env, T: Send + 'static, R>(
+        &'env self,
+        f: impl FnOnce(&mut ScopedJobs<'env, T>) -> R + 'env,
+    ) -> (Vec<T>, R) {
+        let jobs = &*self.jobs.read();
+        // TODO: potentially fucked up, test the hell out of it.
+        let jobs = unsafe { std::mem::transmute::<&Jobs, &'env Jobs>(jobs) };
+        jobs.scope(f)
     }
 }
 

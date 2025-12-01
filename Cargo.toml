@@ -3,7 +3,7 @@ members = ["templates/*"]
 
 [package]
 name = "quaso"
-version = "0.50.0"
+version = "0.51.0"
 edition = "2024"
 authors = ["Patryk 'PsichiX' Budzynski <psichix@gmail.com>"]
 description = "Toolset for making Micro Games quickly"
@@ -39,7 +39,7 @@ intuicio-backend-vm = "0.48"
 intuicio-frontend-simpleton = { version = "0.48", default-features = false }
 randscape = "0.4"
 anput = "0.22"
-moirai = "0.3"
+moirai = "0.5"
 keket = "0.19"
 nodio = "0.4"
 emergent = "1.7"
@@ -57,15 +57,15 @@ serde_json = { version = "1" }
 toml = "0.9"
 noise = "0.9"
 rand = "0.9"
-kira = "0.10"
+kira = "0.11"
 rstar = "0.12"
 gilrs = "0.11"
 anim8 = "1.4"
 rusty_spine = "0.8"
-zip = { version = "5.1", default-features = false, features = ["deflate"] }
+zip = { version = "6.0", default-features = false, features = ["deflate"] }
 tracing = "0.1"
 send_wrapper = "0.6"
-gltf = { version = "1.4", features = ["names", "extras"] }
+gltf = { version = "1.4", features = ["names", "extras", "utils"] }
 base64 = "0.22"
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]

@@ -44,19 +44,19 @@ impl<T> Val<T> {
         unsafe { Ptr(self.0.lazy_immutable()) }
     }
 
-    pub fn read(&self) -> Read<'_, T> {
+    pub fn read(&'_ self) -> Read<'_, T> {
         self.0.read().expect("Could not read value")
     }
 
-    pub fn read_checked(&self) -> Option<Read<'_, T>> {
+    pub fn read_checked(&'_ self) -> Option<Read<'_, T>> {
         self.0.read()
     }
 
-    pub fn write(&mut self) -> Write<'_, T> {
+    pub fn write(&'_ mut self) -> Write<'_, T> {
         self.0.write().expect("Could not write value")
     }
 
-    pub fn write_checked(&mut self) -> Option<Write<'_, T>> {
+    pub fn write_checked(&'_ mut self) -> Option<Write<'_, T>> {
         self.0.write()
     }
 
@@ -106,19 +106,19 @@ impl<T: ?Sized> Ptr<T> {
         self.0.lifetime()
     }
 
-    pub fn read(&self) -> Read<'_, T> {
+    pub fn read(&'_ self) -> Read<'_, T> {
         self.0.read().expect("Could not read value")
     }
 
-    pub fn read_checked(&self) -> Option<Read<'_, T>> {
+    pub fn read_checked(&'_ self) -> Option<Read<'_, T>> {
         self.0.read()
     }
 
-    pub fn write(&self) -> Write<'_, T> {
+    pub fn write(&'_ self) -> Write<'_, T> {
         self.0.write().expect("Could not write value")
     }
 
-    pub fn write_checked(&self) -> Option<Write<'_, T>> {
+    pub fn write_checked(&'_ self) -> Option<Write<'_, T>> {
         self.0.write()
     }
 
@@ -165,19 +165,19 @@ impl DynVal {
         DynPtr(self.0.lazy())
     }
 
-    pub fn read<T>(&self) -> Read<'_, T> {
+    pub fn read<T>(&'_ self) -> Read<'_, T> {
         self.0.read::<T>().expect("Could not read value")
     }
 
-    pub fn read_checked<T>(&self) -> Option<Read<'_, T>> {
+    pub fn read_checked<T>(&'_ self) -> Option<Read<'_, T>> {
         self.0.read::<T>()
     }
 
-    pub fn write<T>(&mut self) -> Write<'_, T> {
+    pub fn write<T>(&'_ mut self) -> Write<'_, T> {
         self.0.write::<T>().expect("Could not write value")
     }
 
-    pub fn write_checked<T>(&mut self) -> Option<Write<'_, T>> {
+    pub fn write_checked<T>(&'_ mut self) -> Option<Write<'_, T>> {
         self.0.write::<T>()
     }
 
@@ -228,19 +228,19 @@ impl DynPtr {
         self.0.lifetime()
     }
 
-    pub fn read<T>(&self) -> Read<'_, T> {
+    pub fn read<T>(&'_ self) -> Read<'_, T> {
         self.0.read::<T>().expect("Could not read value")
     }
 
-    pub fn read_checked<T>(&self) -> Option<Read<'_, T>> {
+    pub fn read_checked<T>(&'_ self) -> Option<Read<'_, T>> {
         self.0.read::<T>()
     }
 
-    pub fn write<T>(&self) -> Write<'_, T> {
+    pub fn write<T>(&'_ self) -> Write<'_, T> {
         self.0.write::<T>().expect("Could not write value")
     }
 
-    pub fn write_checked<T>(&self) -> Option<Write<'_, T>> {
+    pub fn write_checked<T>(&'_ self) -> Option<Write<'_, T>> {
         self.0.write::<T>()
     }
 
