@@ -10,22 +10,23 @@ use quaso::{
     game::{GameInstance, GameState, GameStateChange},
     map::{LdtkMapBuilder, Map, ldtk::EntityInstance},
     third_party::{
-        spitfire_draw::utils::{Drawable, ShaderRef},
-        spitfire_glow::graphics::{CameraScaling, Shader},
+        rand::{Rng, rng},
+        spitfire_draw::{
+            sprite::{Sprite, SpriteTexture},
+            utils::{Drawable, ShaderRef, TextureRef},
+        },
+        spitfire_glow::{
+            graphics::{CameraScaling, Shader},
+            renderer::GlowTextureFiltering,
+        },
         spitfire_input::{
             CardinalInputCombinator, InputActionRef, InputConsume, InputMapping, VirtualAction,
         },
+        vek::{Rect, Vec2},
         windowing::event::VirtualKeyCode,
     },
 };
-use rand::{Rng, rng};
-use spitfire_draw::{
-    sprite::{Sprite, SpriteTexture},
-    utils::TextureRef,
-};
-use spitfire_glow::renderer::GlowTextureFiltering;
 use std::error::Error;
-use vek::{Rect, Vec2};
 
 const SPEED: f32 = 200.0;
 

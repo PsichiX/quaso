@@ -3,7 +3,7 @@ members = ["templates/*"]
 
 [package]
 name = "quaso"
-version = "0.51.0"
+version = "0.52.0"
 edition = "2024"
 authors = ["Patryk 'PsichiX' Budzynski <psichix@gmail.com>"]
 description = "Toolset for making Micro Games quickly"
@@ -15,11 +15,13 @@ readme = "README.md"
 exclude = ["resources/", "templates/"]
 
 [features]
+default = ["editor"]
 debug_automatic_glGetError = [
     "spitfire-glow/debug_automatic_glGetError",
     "spitfire-draw/debug_automatic_glGetError",
     "spitfire-gui/debug_automatic_glGetError",
 ]
+editor = []
 
 [dependencies]
 spitfire-core = "0.36"

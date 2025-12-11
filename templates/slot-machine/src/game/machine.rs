@@ -1,9 +1,9 @@
 use quaso::{
     context::GameContext,
-    coroutine::{async_delta_time, defer},
+    coroutine::{async_delta_time, async_next_frame, coroutine},
     game::GameObject,
     third_party::{
-        moirai::coroutine::{with_all, yield_now},
+        moirai::coroutine::with_all,
         rand::{Rng, rng},
         spitfire_draw::{
             sprite::{Sprite, SpriteTexture},
@@ -177,7 +177,7 @@ impl SlotMachine {
             (source_reels, target_reels)
         };
 
-        defer(SlotMachine::hold_lever(this.clone())).await;
+        coroutine(SlotMachine::hold_lever(this.clone())).await;
 
         with_all(
             (0..3)
@@ -223,7 +223,7 @@ impl SlotMachine {
             let factor = factor * factor * (3.0 - 2.0 * factor);
             this.write().reels[index] = source_reel.lerp(&target_reel, factor);
 
-            yield_now().await;
+            async_next_frame().await;
         }
 
         this.write().reels[index].normalize();
@@ -235,7 +235,7 @@ impl SlotMachine {
         let mut timer = 0.0;
         while timer < LEVER_DOWN_DURATION.min(REEL_SPIN_DURATION) {
             timer += async_delta_time().await;
-            yield_now().await;
+            async_next_frame().await;
         }
 
         this.write().lever_down = false;

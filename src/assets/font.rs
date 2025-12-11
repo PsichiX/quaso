@@ -5,7 +5,7 @@ use keket::{
     database::{handle::AssetHandle, path::AssetPathStatic},
     protocol::AssetProtocol,
 };
-use std::error::Error;
+use std::{any::Any, error::Error};
 
 pub struct FontAsset {
     pub font: Font,
@@ -14,7 +14,7 @@ pub struct FontAsset {
 pub struct FontAssetSubsystem;
 
 impl GameSubsystem for FontAssetSubsystem {
-    fn run(&mut self, context: GameContext, _: f32) {
+    fn update(&mut self, context: GameContext, _: f32) {
         for entity in context.assets.storage.added().iter_of::<FontAsset>() {
             if let Some((path, asset)) = context
                 .assets
@@ -36,6 +36,14 @@ impl GameSubsystem for FontAssetSubsystem {
                 context.draw.fonts.remove(name_from_path(&path));
             }
         }
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+
+    fn as_any_mut(&mut self) -> &mut dyn Any {
+        self
     }
 }
 

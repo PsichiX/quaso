@@ -5,7 +5,7 @@ use keket::{
     protocol::AssetProtocol,
 };
 use kira::sound::static_sound::StaticSoundData;
-use std::{error::Error, io::Cursor};
+use std::{any::Any, error::Error, io::Cursor};
 
 pub struct SoundAsset {
     pub data: StaticSoundData,
@@ -14,7 +14,7 @@ pub struct SoundAsset {
 pub struct SoundAssetSubsystem;
 
 impl GameSubsystem for SoundAssetSubsystem {
-    fn run(&mut self, context: GameContext, _: f32) {
+    fn update(&mut self, context: GameContext, _: f32) {
         for entity in context.assets.storage.added().iter_of::<SoundAsset>() {
             if let Some((path, asset)) = context
                 .assets
@@ -36,6 +36,14 @@ impl GameSubsystem for SoundAssetSubsystem {
                 context.audio.sounds.remove(name_from_path(&path));
             }
         }
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+
+    fn as_any_mut(&mut self) -> &mut dyn Any {
+        self
     }
 }
 

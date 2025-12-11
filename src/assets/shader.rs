@@ -4,7 +4,7 @@ use keket::{
     database::{handle::AssetHandle, path::AssetPathStatic},
     protocol::AssetProtocol,
 };
-use std::{borrow::Cow, error::Error};
+use std::{any::Any, borrow::Cow, error::Error};
 
 pub struct ShaderAsset {
     pub vertex: Cow<'static, str>,
@@ -23,7 +23,7 @@ impl ShaderAsset {
 pub struct ShaderAssetSubsystem;
 
 impl GameSubsystem for ShaderAssetSubsystem {
-    fn run(&mut self, context: GameContext, _: f32) {
+    fn update(&mut self, context: GameContext, _: f32) {
         for entity in context.assets.storage.added().iter_of::<ShaderAsset>() {
             if let Some((path, asset)) = context
                 .assets
@@ -48,6 +48,14 @@ impl GameSubsystem for ShaderAssetSubsystem {
                 context.draw.shaders.remove(name_from_path(&path));
             }
         }
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+
+    fn as_any_mut(&mut self) -> &mut dyn Any {
+        self
     }
 }
 

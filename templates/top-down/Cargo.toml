@@ -8,12 +8,16 @@ publish = false
 name = "game_web"
 crate-type = ["cdylib"]
 
+[features]
+editor = ["quaso/editor"]
+
 [dependencies.quaso]
-version = "0.51"
+version = "0.52"
 path = "../.."
+default-features = false
 
 [build-dependencies.quaso]
-version = "0.51"
+version = "0.52"
 path = "../.."
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]

@@ -3,10 +3,10 @@ use quaso::{
     assets::{make_directory_database, shader::ShaderAsset},
     config::Config,
     context::GameContext,
-    coroutine::{async_delay, async_delta_time},
+    coroutine::{async_delay, async_delta_time, async_next_frame},
     game::{GameInstance, GameState, GameStateChange},
     third_party::{
-        moirai::coroutine::yield_now,
+        rand::{Rng, rng},
         spitfire_draw::{
             sprite::{Sprite, SpriteTexture},
             utils::{Drawable, TextureRef},
@@ -21,7 +21,6 @@ use quaso::{
     },
     value::Val,
 };
-use rand::{Rng, rng};
 use std::error::Error;
 
 const SPEED: f32 = 100.0;
@@ -103,10 +102,10 @@ impl GameState for State {
             ));
 
         // Get lazy managed value of the interpolated position.
-        // This allows us to read and write the position in a thread-safe manner.
+        // This allows us to read and write the position in an async-safe manner.
         let position = self.position.pointer();
         // Start a coroutine to handle the interpolated movement.
-        context.jobs.unwrap().defer(async move {
+        context.jobs.unwrap().coroutine(async move {
             // interpolated movement never ends.
             loop {
                 // Generate a random target position within a range.
@@ -114,7 +113,7 @@ impl GameState for State {
                     rng().random_range(-100.0..100.0),
                     rng().random_range(-100.0..100.0),
                 );
-                // Wait 5 in-game seconds before starting the movement.
+                // Wait half in-game second before starting the movement.
                 async_delay(0.5).await;
                 // Move towards the target position smoothly.
                 loop {
@@ -127,8 +126,8 @@ impl GameState for State {
                     // Interpolate towards the target position.
                     let delta = (target - *position.read()).normalized() * SPEED * dt;
                     *position.write() += delta;
-                    // Yield control to allow other tasks to run.
-                    yield_now().await;
+                    // Wait for next frame.
+                    async_next_frame().await;
                 }
             }
         });

@@ -1,48 +1,14 @@
-use crate::{context::GameContext, value::Heartbeat};
+use crate::{
+    context::GameContext,
+    game::{CONTEXT_META, DELTA_TIME_META, NEXT_FRAME_QUEUE_META},
+    value::{DynPtr, Heartbeat},
+};
 use keket::database::handle::AssetHandle;
 use moirai::{
-    coroutine::{meta, spawn},
-    jobs::{JobHandle, JobLocation},
+    coroutine::{meta, move_to, spawn, yield_now},
+    jobs::{JobHandle, JobLocation, JobOptions, JobQueue},
 };
-use std::{
-    future::poll_fn,
-    pin::Pin,
-    sync::{
-        Arc,
-        atomic::{AtomicUsize, Ordering},
-    },
-    task::{Context, Poll},
-};
-
-#[derive(Debug, Default, Clone)]
-pub struct AsyncNextFrame {
-    origin_frame: usize,
-    current_frame: Arc<AtomicUsize>,
-}
-
-impl AsyncNextFrame {
-    pub fn tick(&mut self) {
-        self.origin_frame = self.origin_frame.wrapping_add(1);
-        self.current_frame
-            .store(self.origin_frame, Ordering::SeqCst);
-    }
-}
-
-impl Future for AsyncNextFrame {
-    type Output = ();
-
-    fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-        let current_frame = self.current_frame.load(Ordering::SeqCst);
-        if current_frame == self.origin_frame {
-            cx.waker().wake_by_ref();
-            Poll::Pending
-        } else {
-            self.origin_frame = current_frame;
-            cx.waker().wake_by_ref();
-            Poll::Ready(())
-        }
-    }
-}
+use std::{future::poll_fn, task::Poll};
 
 pub async fn async_heartbeat_bound<F: Future>(
     heartbeats: impl IntoIterator<Item = Heartbeat>,
@@ -83,14 +49,14 @@ pub async fn async_cancellable<F: Future>(
 }
 
 pub async fn async_game_context<'a>() -> Option<GameContext<'a>> {
-    let context = meta::<GameContext>("context").await?;
+    let context = meta::<GameContext>(CONTEXT_META).await?;
     let context = unsafe { context.as_mut_ptr() }?;
     let context = unsafe { context.as_mut() }?;
     Some(GameContext::fork(context))
 }
 
 pub async fn async_delta_time() -> f32 {
-    meta("delta_time")
+    meta::<f32>(DELTA_TIME_META)
         .await
         .and_then(|dt| dt.read().map(|dt| *dt))
         .unwrap_or_default()
@@ -105,9 +71,15 @@ pub async fn async_delay(mut seconds: f32) {
 }
 
 pub async fn async_next_frame() {
-    if let Some(context) = async_game_context().await {
-        context.async_next_frame.clone().await;
-    }
+    let Some(queue) = meta::<JobQueue>(NEXT_FRAME_QUEUE_META).await else {
+        yield_now().await;
+        return;
+    };
+    let Some(queue) = queue.read().map(|queue| queue.clone()) else {
+        yield_now().await;
+        return;
+    };
+    move_to(JobLocation::Queue(queue)).await;
 }
 
 pub async fn async_wait_for_asset(handle: AssetHandle) {
@@ -116,7 +88,7 @@ pub async fn async_wait_for_asset(handle: AssetHandle) {
         if handle.is_ready_to_use(context.assets) {
             break;
         }
-        context.async_next_frame.clone().await;
+        async_next_frame().await;
     }
 }
 
@@ -126,12 +98,29 @@ pub async fn async_wait_for_assets(handles: impl IntoIterator<Item = AssetHandle
     }
 }
 
-pub async fn defer<F>(job: F) -> JobHandle<F::Output>
+pub async fn coroutine<F>(job: F) -> JobHandle<F::Output>
 where
     F: Future + Send + Sync + 'static,
     <F as Future>::Output: Send,
 {
     spawn(JobLocation::Local, job).await
+}
+
+pub async fn coroutine_with_meta<F>(
+    meta: impl IntoIterator<Item = (String, DynPtr)>,
+    job: F,
+) -> JobHandle<F::Output>
+where
+    F: Future + Send + Sync + 'static,
+    <F as Future>::Output: Send,
+{
+    spawn(
+        JobOptions::default()
+            .location(JobLocation::Local)
+            .meta_many(meta.into_iter().map(|(id, ptr)| (id, ptr.into_inner()))),
+        job,
+    )
+    .await
 }
 
 pub async fn async_remap<T, F: Future>(future: F, f: impl FnOnce(F::Output) -> T) -> T {

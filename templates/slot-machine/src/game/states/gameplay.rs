@@ -107,7 +107,7 @@ impl GameState for Gameplay {
             context
                 .jobs
                 .unwrap()
-                .defer(async_heartbeat_bound([machine.heartbeat()], async {
+                .coroutine(async_heartbeat_bound([machine.heartbeat()], async {
                     if let Some(index) = SlotMachine::spin(machine).await {
                         match index {
                             0 => println!("Payline: 1"),

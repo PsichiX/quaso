@@ -137,6 +137,18 @@ impl GameState for Preloader {
                         .looped(true),
                     )
                     .with_animation(
+                        "run",
+                        GltfSceneAnimation::new(
+                            context
+                                .assets
+                                .find("gltf-anim://stickerman.glb/Run")
+                                .unwrap(),
+                        )
+                        .weight(0.0)
+                        .playing(true)
+                        .looped(true),
+                    )
+                    .with_animation(
                         "crouch",
                         GltfSceneAnimation::new(
                             context
@@ -204,8 +216,16 @@ impl GameState for Preloader {
                                         GltfAnimationTarget::new("walk"),
                                     ))
                                     .point(GltfAnimationBlendSpacePoint::new(
+                                        [-2.0],
+                                        GltfAnimationTarget::new("run"),
+                                    ))
+                                    .point(GltfAnimationBlendSpacePoint::new(
                                         [1.0],
                                         GltfAnimationTarget::new("walk"),
+                                    ))
+                                    .point(GltfAnimationBlendSpacePoint::new(
+                                        [2.0],
+                                        GltfAnimationTarget::new("run"),
                                     )),
                             ))
                             .point(GltfAnimationBlendSpacePoint::new(
@@ -243,6 +263,7 @@ impl GameState for Preloader {
                     instance,
                     movement: Default::default(),
                     delayed_movement: Default::default(),
+                    sprint: InputActionRef::default(),
                 }));
             }
         })
@@ -252,6 +273,7 @@ impl GameState for Preloader {
 struct State {
     instance: GltfSceneInstance,
     movement: CardinalInputCombinator,
+    sprint: InputActionRef,
     delayed_movement: [f32; 2],
 }
 
@@ -270,7 +292,11 @@ impl GameState for State {
                 .action(VirtualAction::KeyButton(VirtualKeyCode::W), up)
                 .action(VirtualAction::KeyButton(VirtualKeyCode::S), down)
                 .action(VirtualAction::KeyButton(VirtualKeyCode::A), left)
-                .action(VirtualAction::KeyButton(VirtualKeyCode::D), right),
+                .action(VirtualAction::KeyButton(VirtualKeyCode::D), right)
+                .action(
+                    VirtualAction::KeyButton(VirtualKeyCode::LShift),
+                    self.sprint.clone(),
+                ),
         );
     }
 
@@ -279,9 +305,16 @@ impl GameState for State {
     }
 
     fn fixed_update(&mut self, context: GameContext, delta_time: f32) {
-        let movement = self.movement.get();
+        let mut movement = self.movement.get();
+        let sprint = if self.sprint.get().is_hold() {
+            2.0
+        } else {
+            1.0
+        };
+        movement[0] *= sprint;
         self.delayed_movement =
             std::array::from_fn(|i| self.delayed_movement[i] * 0.9 + movement[i] * 0.1);
+
         self.instance
             .parameter("move-x")
             .unwrap()

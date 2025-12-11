@@ -109,7 +109,7 @@ impl GameState for State {
     fn enter(&mut self, context: GameContext) {
         self.ferris = Sprite::single(SpriteTexture {
             sampler: "u_image".into(),
-            texture: TextureRef::name("ferris.png"),
+            texture: TextureRef::name(""),
             filtering: GlowTextureFiltering::Linear,
         })
         .pivot(0.5.into());

@@ -27,7 +27,9 @@ pub struct InRangeFilter {
 
 impl GridWorldEmitterFilter for InRangeFilter {
     fn filter(&self, tile: &TileInstance) -> bool {
-        let status = tile.location.distance_squared(self.location) > self.range * self.range;
+        let tile_location = tile.location.numcast::<isize>().unwrap();
+        let location = self.location.numcast::<isize>().unwrap();
+        let status = tile_location.distance_squared(location) as usize > self.range * self.range;
         status != self.clear_outside
     }
 }
@@ -62,6 +64,11 @@ impl GridWorldLayer {
     pub fn access_filter<F: GridWorldEmitterFilter + 'static>(&self) -> Option<&F> {
         let object: &dyn Any = &*self.filter;
         object.downcast_ref::<F>()
+    }
+
+    pub fn access_filter_mut<F: GridWorldEmitterFilter + 'static>(&mut self) -> Option<&mut F> {
+        let object: &mut dyn Any = &mut *self.filter;
+        object.downcast_mut::<F>()
     }
 }
 

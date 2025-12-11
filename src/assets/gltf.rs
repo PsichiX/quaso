@@ -5,6 +5,7 @@ use crate::{
     },
     assets::name_from_path,
     context::GameContext,
+    coroutine::async_next_frame,
     game::GameSubsystem,
 };
 use anput::bundle::DynamicBundle;
@@ -27,12 +28,11 @@ use keket::{
         group::GroupAsset,
     },
 };
-use moirai::coroutine::yield_now;
 use send_wrapper::SendWrapper;
 use spitfire_core::Triangle;
 use spitfire_draw::{sprite::SpriteTexture, utils::TextureRef};
 use spitfire_glow::renderer::{GlowBlending, GlowTextureFiltering};
-use std::{collections::HashMap, error::Error};
+use std::{any::Any, collections::HashMap, error::Error};
 use vek::{Mat4, Quaternion, Transform, Vec3};
 
 pub struct GltfAsset {
@@ -42,7 +42,15 @@ pub struct GltfAsset {
 pub struct GltfAssetSubsystem;
 
 impl GameSubsystem for GltfAssetSubsystem {
-    fn run(&mut self, _context: GameContext, _: f32) {}
+    fn update(&mut self, _context: GameContext, _: f32) {}
+
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+
+    fn as_any_mut(&mut self) -> &mut dyn Any {
+        self
+    }
 }
 
 pub fn make_gltf_asset_protocol() -> FutureAssetProtocol {
@@ -110,7 +118,7 @@ async fn process_gltf(
 ) -> Result<Gltf, Box<dyn Error>> {
     for texture in gltf.textures() {
         process_texture(texture, &path, handle, &access, bin)?;
-        yield_now().await;
+        async_next_frame().await;
     }
 
     let mut buffers = Vec::default();
@@ -137,7 +145,7 @@ async fn process_gltf(
             },
         };
         buffers.push(data);
-        yield_now().await;
+        async_next_frame().await;
     }
 
     let mut meshes_table = HashMap::default();
@@ -145,7 +153,7 @@ async fn process_gltf(
         let index = mesh.index();
         let handle = process_mesh(mesh, &path, handle, &access, &buffers, &options)?;
         meshes_table.insert(index, handle);
-        yield_now().await;
+        async_next_frame().await;
     }
 
     let mut skins_table = HashMap::default();
@@ -153,17 +161,17 @@ async fn process_gltf(
         let index = skin.index();
         let handle = process_skin(skin, &path, handle, &access, &buffers, &options)?;
         skins_table.insert(index, handle);
-        yield_now().await;
+        async_next_frame().await;
     }
 
     for animation in gltf.animations() {
         process_animation(animation, &path, handle, &access, &buffers)?;
-        yield_now().await;
+        async_next_frame().await;
     }
 
     for scene in gltf.scenes() {
         process_scene(scene, &path, handle, &access, &meshes_table, &skins_table)?;
-        yield_now().await;
+        async_next_frame().await;
     }
 
     Ok(gltf)

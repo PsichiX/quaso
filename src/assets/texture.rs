@@ -6,7 +6,7 @@ use keket::{
     protocol::AssetProtocol,
 };
 use spitfire_glow::renderer::GlowTextureFormat;
-use std::error::Error;
+use std::{any::Any, error::Error};
 
 pub struct TextureAsset {
     pub image: RgbaImage,
@@ -17,7 +17,7 @@ pub struct TextureAsset {
 pub struct TextureAssetSubsystem;
 
 impl GameSubsystem for TextureAssetSubsystem {
-    fn run(&mut self, context: GameContext, _: f32) {
+    fn update(&mut self, context: GameContext, _: f32) {
         for entity in context.assets.storage.added().iter_of::<TextureAsset>() {
             if let Some((path, asset)) = context
                 .assets
@@ -49,6 +49,14 @@ impl GameSubsystem for TextureAssetSubsystem {
                 context.draw.textures.remove(name_from_path(&path));
             }
         }
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+
+    fn as_any_mut(&mut self) -> &mut dyn Any {
+        self
     }
 }
 

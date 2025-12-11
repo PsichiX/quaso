@@ -1,9 +1,13 @@
+use spitfire_core::Triangle;
 use spitfire_draw::{
     context::DrawContext,
-    utils::{Drawable, Vertex},
+    utils::{Drawable, ShaderRef, Vertex},
 };
-use spitfire_glow::graphics::GraphicsTarget;
-use vek::{Aabr, Rect, Vec2};
+use spitfire_glow::{
+    graphics::{GraphicsBatch, GraphicsTarget},
+    renderer::{GlowBlending, GlowUniformValue},
+};
+use vek::{Aabr, Rect, Rgba, Vec2};
 
 #[derive(Debug, Default, Clone)]
 pub struct Interactible {
@@ -93,45 +97,112 @@ impl Interactible {
 
         false
     }
+
+    pub fn draw_wireframe(
+        &self,
+        shader: &ShaderRef,
+        color: Rgba<f32>,
+        context: &mut DrawContext,
+        graphics: &mut dyn GraphicsTarget<Vertex>,
+        time: f32,
+    ) {
+        let batch = GraphicsBatch {
+            shader: context.shader(Some(shader)),
+            uniforms: [
+                (
+                    "u_projection_view".into(),
+                    GlowUniformValue::M4(
+                        graphics.state().main_camera.world_matrix().into_col_array(),
+                    ),
+                ),
+                ("u_time".into(), GlowUniformValue::F1(time)),
+            ]
+            .into(),
+            textures: Default::default(),
+            blending: GlowBlending::None,
+            scissor: None,
+            wireframe: true,
+        };
+        let stream = &mut graphics.state_mut().stream;
+        stream.batch_optimized(batch);
+        unsafe {
+            stream.extend_triangles(
+                true,
+                self.triangles.iter().map(|v| Triangle {
+                    a: v[0],
+                    b: v[1],
+                    c: v[2],
+                }),
+            );
+            stream.extend_vertices(self.vertices.iter().copied().map(|v| Vertex {
+                position: v.into_array(),
+                uv: [0.0, 0.0, 0.0],
+                color: color.into_array(),
+            }));
+        }
+    }
+}
+
+pub struct RenderableInteractible {
+    pub interactible: Interactible,
+    vertex_offset: usize,
+    triangle_offset: usize,
+}
+
+impl RenderableInteractible {
+    pub fn new(graphics: &mut dyn GraphicsTarget<Vertex>) -> Self {
+        Self {
+            interactible: Interactible::default(),
+            vertex_offset: graphics.state().stream.vertices().len(),
+            triangle_offset: graphics.state().stream.triangles().len(),
+        }
+    }
+
+    pub fn interactible(mut self, graphics: &mut dyn GraphicsTarget<Vertex>) -> Interactible {
+        self.interactible
+            .vertices
+            .reserve_exact(graphics.state().stream.vertices().len() - self.vertex_offset);
+        self.interactible
+            .triangles
+            .reserve_exact(graphics.state().stream.triangles().len() - self.triangle_offset);
+        for vertex in graphics.state().stream.vertices()[self.vertex_offset..].iter() {
+            self.interactible.add_vertex(vertex.position);
+        }
+        for triangle in graphics.state().stream.triangles()[self.triangle_offset..].iter() {
+            self.interactible.add_triangle([
+                triangle.a - self.vertex_offset as u32,
+                triangle.b - self.vertex_offset as u32,
+                triangle.c - self.vertex_offset as u32,
+            ]);
+        }
+        self.interactible
+    }
+
+    pub fn vertex_offset(&self) -> usize {
+        self.vertex_offset
+    }
+
+    pub fn triangle_offset(&self) -> usize {
+        self.triangle_offset
+    }
 }
 
 pub struct DrawableInteractible<T: Drawable> {
     pub drawable: T,
-    pub interactible: Interactible,
 }
 
 impl<T: Drawable> DrawableInteractible<T> {
     pub fn new(drawable: T) -> Self {
-        Self {
-            drawable,
-            interactible: Interactible::default(),
-        }
+        Self { drawable }
     }
 
     pub fn draw(
-        mut self,
+        self,
         context: &mut DrawContext,
         graphics: &mut dyn GraphicsTarget<Vertex>,
     ) -> Interactible {
-        let vertex_offset = graphics.state().stream.vertices().len();
-        let triangle_offset = graphics.state().stream.triangles().len();
+        let interactible = RenderableInteractible::new(graphics);
         self.drawable.draw(context, graphics);
-        self.interactible
-            .vertices
-            .reserve_exact(graphics.state().stream.vertices().len() - vertex_offset);
-        self.interactible
-            .triangles
-            .reserve_exact(graphics.state().stream.triangles().len() - triangle_offset);
-        for vertex in graphics.state().stream.vertices()[vertex_offset..].iter() {
-            self.interactible.add_vertex(vertex.position);
-        }
-        for triangle in graphics.state().stream.triangles()[triangle_offset..].iter() {
-            self.interactible.add_triangle([
-                triangle.a - vertex_offset as u32,
-                triangle.b - vertex_offset as u32,
-                triangle.c - vertex_offset as u32,
-            ]);
-        }
-        self.interactible
+        interactible.interactible(graphics)
     }
 }

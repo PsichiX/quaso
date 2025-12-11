@@ -105,20 +105,11 @@ impl GameState for State {
         }
 
         if let Some(mouse_xy) = self.mouse_xy.as_ref() {
-            let source = Vec2::from(mouse_xy.get());
             let source = context
                 .graphics
                 .state
                 .main_camera
-                .screen_matrix()
-                .mul_point(source);
-            let source = context
-                .graphics
-                .state
-                .main_camera
-                .world_matrix()
-                .inverted()
-                .mul_point(source);
+                .screen_to_world_point(mouse_xy.get().into());
             let time = self
                 .spline
                 .find_time_closest_to_point(&source.into_array())

@@ -14,6 +14,9 @@ build-web:
 build-desktop:
     cargo build --release
 
+editor:
+    cargo run --release --features editor
+
 run platform="desktop":
     just run-{{platform}}
 
@@ -55,7 +58,7 @@ package:
     just package-web
 
 package-windows:
-    cargo build --release
+    just build desktop
     rm -rf ./dist/windows/
     mkdir -p ./dist/windows/
     cp -f ../../target/release/slot-machine.exe ./dist/windows/

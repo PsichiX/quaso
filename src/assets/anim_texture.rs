@@ -2,6 +2,7 @@ use crate::{
     animation::frame::{SpriteAnimationImage, SpriteFrameAnimation},
     assets::name_from_path,
     context::GameContext,
+    coroutine::async_next_frame,
     game::GameSubsystem,
 };
 use anput::bundle::DynamicBundle;
@@ -13,11 +14,10 @@ use keket::{
     database::{handle::AssetHandle, path::AssetPathStatic},
     protocol::future::{FutureAssetProtocol, FutureStorageAccess},
 };
-use moirai::coroutine::yield_now;
 use send_wrapper::SendWrapper;
 use spitfire_draw::utils::TextureRef;
 use spitfire_glow::renderer::GlowTextureFormat;
-use std::{error::Error, io::Cursor};
+use std::{any::Any, error::Error, io::Cursor};
 use vek::Rect;
 
 pub struct AnimTextureFrame {
@@ -54,7 +54,7 @@ impl AnimTextureAsset {
 pub struct AnimTextureAssetSubsystem;
 
 impl GameSubsystem for AnimTextureAssetSubsystem {
-    fn run(&mut self, context: GameContext, _: f32) {
+    fn update(&mut self, context: GameContext, _: f32) {
         for entity in context.assets.storage.added().iter_of::<AnimTextureAsset>() {
             if let Some((path, asset)) = context
                 .assets
@@ -99,6 +99,14 @@ impl GameSubsystem for AnimTextureAssetSubsystem {
             }
         }
     }
+
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+
+    fn as_any_mut(&mut self) -> &mut dyn Any {
+        self
+    }
 }
 
 pub fn make_anim_texture_asset_protocol() -> FutureAssetProtocol {
@@ -132,7 +140,7 @@ async fn process_bytes(
                     image: frame.into_buffer(),
                     duration: (numer as f32 / denom as f32) * 0.001,
                 });
-                yield_now().await;
+                async_next_frame().await;
             }
         }
         ImageFormat::Png => {
@@ -150,7 +158,7 @@ async fn process_bytes(
                     image: frame.into_buffer(),
                     duration: (numer as f32 / denom as f32) * 0.001,
                 });
-                yield_now().await;
+                async_next_frame().await;
             }
         }
         ImageFormat::WebP => {
@@ -166,7 +174,7 @@ async fn process_bytes(
                     image: frame.into_buffer(),
                     duration: (numer as f32 / denom as f32) * 0.001,
                 });
-                yield_now().await;
+                async_next_frame().await;
             }
         }
         _ => return Err(format!("Unsupported anim texture format: {:?}", format).into()),

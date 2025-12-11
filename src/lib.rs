@@ -10,7 +10,7 @@ pub mod third_party {
     pub use glutin as windowing;
     pub use image;
     #[cfg(target_arch = "wasm32")]
-    pub use instant::Instant;
+    pub use instant::{Duration, Instant};
     pub use intuicio_backend_vm;
     pub use intuicio_core;
     pub use intuicio_data;
@@ -38,7 +38,7 @@ pub mod third_party {
     pub use spitfire_gui;
     pub use spitfire_input;
     #[cfg(not(target_arch = "wasm32"))]
-    pub use std::time::Instant;
+    pub use std::time::{Duration, Instant};
     pub use toml;
     pub use tracing;
     pub use typid;
@@ -55,6 +55,8 @@ pub mod character;
 pub mod config;
 pub mod context;
 pub mod coroutine;
+#[cfg(feature = "editor")]
+pub mod editor;
 pub mod game;
 pub mod gamepad;
 pub mod interactible;
