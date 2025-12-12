@@ -253,7 +253,7 @@ impl GameJobs {
         options: impl Into<JobOptions>,
         job: impl Future<Output = T> + Send + Sync + 'static,
     ) -> JobHandle<T> {
-        self.jobs.spawn(options, job).unwrap()
+        self.jobs.spawn(options, job)
     }
 }
 
@@ -407,13 +407,17 @@ impl GameInstance {
         self
     }
 
-    pub fn with_jobs_unnamed_worker(mut self) -> Self {
-        self.jobs.jobs.add_unnamed_worker();
+    pub fn with_jobs_unnamed_worker(mut self, iteration_timeout: Duration) -> Self {
+        self.jobs.jobs.add_unnamed_worker(iteration_timeout);
         self
     }
 
-    pub fn with_jobs_named_worker(mut self, name: impl ToString) -> Self {
-        self.jobs.jobs.add_named_worker(name);
+    pub fn with_jobs_named_worker(
+        mut self,
+        iteration_timeout: Duration,
+        name: impl ToString,
+    ) -> Self {
+        self.jobs.jobs.add_named_worker(iteration_timeout, name);
         self
     }
 
@@ -1217,7 +1221,12 @@ impl GameInstance {
         if !self.next_frame_queue.is_empty() {
             self.jobs.jobs.submit_queue(&self.next_frame_queue);
         }
-        while !self.jobs.jobs.queue_is_empty() {
+        while !self
+            .jobs
+            .jobs
+            .queue_filter_count(|_, location, _, _, _| location == &JobLocation::Local)
+            > 0
+        {
             let mut async_context = GameContext {
                 graphics,
                 draw: &mut self.draw,

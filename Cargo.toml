@@ -3,7 +3,7 @@ members = ["templates/*"]
 
 [package]
 name = "quaso"
-version = "0.52.0"
+version = "0.52.1"
 edition = "2024"
 authors = ["Patryk 'PsichiX' Budzynski <psichix@gmail.com>"]
 description = "Toolset for making Micro Games quickly"
@@ -41,7 +41,7 @@ intuicio-backend-vm = "0.48"
 intuicio-frontend-simpleton = { version = "0.48", default-features = false }
 randscape = "0.4"
 anput = "0.22"
-moirai = "0.5"
+moirai = "0.6"
 keket = "0.19"
 nodio = "0.4"
 emergent = "1.7"
@@ -66,6 +66,7 @@ anim8 = "1.4"
 rusty_spine = "0.8"
 zip = { version = "6.0", default-features = false, features = ["deflate"] }
 tracing = "0.1"
+tracing-subscriber = "0.3"
 send_wrapper = "0.6"
 gltf = { version = "1.4", features = ["names", "extras", "utils"] }
 base64 = "0.22"
@@ -77,6 +78,7 @@ getrandom = { version = "0.3", features = ["wasm_js"] }
 wasm-bindgen = "0.2"
 web-sys = { version = "0.3", features = ["Window", "Navigator"] }
 js-sys = "0.3"
+tracing-web = "0.1"
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 glutin = "0.28"

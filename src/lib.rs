@@ -41,6 +41,9 @@ pub mod third_party {
     pub use std::time::{Duration, Instant};
     pub use toml;
     pub use tracing;
+    pub use tracing_subscriber;
+    #[cfg(target_arch = "wasm32")]
+    pub use tracing_web;
     pub use typid;
     pub use vek;
     #[cfg(target_arch = "wasm32")]
