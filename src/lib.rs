@@ -16,6 +16,7 @@ pub mod third_party {
     pub use intuicio_data;
     pub use intuicio_derive;
     pub use intuicio_frontend_simpleton;
+    pub use intuicio_parser;
     pub use keket;
     pub use kira;
     pub use moirai;
@@ -62,11 +63,12 @@ pub mod coroutine;
 pub mod editor;
 pub mod game;
 pub mod gamepad;
+pub mod gc;
 pub mod interactible;
 pub mod map;
 pub mod scripting;
 pub mod tag;
-pub mod value;
+pub mod transformed;
 
 use config::Config;
 use game::GameInstance;

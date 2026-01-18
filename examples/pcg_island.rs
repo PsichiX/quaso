@@ -207,10 +207,7 @@ impl GameState for State {
                 &self.weather_tileset,
                 (0..SIZE)
                     .flat_map(|y| (0..SIZE).map(move |x| (x, y)))
-                    .map(|(x, y)| TileInstance {
-                        id: self.weather(x, y, self.time),
-                        location: Vec2 { x, y },
-                    }),
+                    .map(|(x, y)| TileInstance::new(self.weather(x, y, self.time), Vec2 { x, y })),
             )
             .draw(context.draw, context.graphics);
     }

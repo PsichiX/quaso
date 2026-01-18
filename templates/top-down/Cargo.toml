@@ -12,14 +12,17 @@ crate-type = ["cdylib"]
 editor = ["quaso/editor"]
 
 [dependencies.quaso]
-version = "0.52"
+version = "0.54"
 path = "../.."
 default-features = false
 
 [build-dependencies.quaso]
-version = "0.52"
+version = "0.54"
 path = "../.."
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 wasm-bindgen = "0.2"
 console_error_panic_hook = "0.1"
+
+[profile.dev.package."*"]
+opt-level = 3

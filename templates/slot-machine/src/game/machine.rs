@@ -2,6 +2,7 @@ use quaso::{
     context::GameContext,
     coroutine::{async_delta_time, async_next_frame, coroutine},
     game::GameObject,
+    gc::Gc,
     third_party::{
         moirai::coroutine::with_all,
         rand::{Rng, rng},
@@ -12,7 +13,6 @@ use quaso::{
         spitfire_glow::renderer::GlowTextureFiltering,
         vek::{Rect, Transform, Vec2, Vec3},
     },
-    value::Ptr,
 };
 use std::{
     future::Future,
@@ -163,7 +163,7 @@ impl Default for SlotMachine {
 }
 
 impl SlotMachine {
-    pub async fn spin(this: Ptr<Self>) -> Option<usize> {
+    pub async fn spin(mut this: Gc<Self>) -> Option<usize> {
         let (source_reels, target_reels) = {
             if this.read().spinning {
                 return None;
@@ -177,13 +177,13 @@ impl SlotMachine {
             (source_reels, target_reels)
         };
 
-        coroutine(SlotMachine::hold_lever(this.clone())).await;
+        coroutine(SlotMachine::hold_lever(this.reference())).await;
 
         with_all(
             (0..3)
                 .map(|index| {
                     Box::pin(SlotMachine::spin_reel(
-                        this.clone(),
+                        this.reference(),
                         index,
                         (index as f32) * 0.5,
                         source_reels[index],
@@ -206,7 +206,7 @@ impl SlotMachine {
     }
 
     async fn spin_reel(
-        this: Ptr<Self>,
+        mut this: Gc<Self>,
         index: usize,
         delay: f32,
         source_reel: Reel,
@@ -229,7 +229,7 @@ impl SlotMachine {
         this.write().reels[index].normalize();
     }
 
-    async fn hold_lever(this: Ptr<Self>) {
+    async fn hold_lever(mut this: Gc<Self>) {
         this.write().lever_down = true;
 
         let mut timer = 0.0;

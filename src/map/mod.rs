@@ -18,6 +18,27 @@ use spitfire_glow::{
 use std::{borrow::Cow, collections::HashMap};
 use vek::{Quaternion, Rect, Rgba, Transform, Vec2, Vec3};
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LdtkMapColliderResult {
+    Ignore,
+    ClearArea,
+    AggregateMask(u32),
+    UniqueAreaMask(u32),
+}
+
+impl LdtkMapColliderResult {
+    pub fn does_clear_area(&self) -> bool {
+        matches!(self, Self::ClearArea | Self::UniqueAreaMask(_))
+    }
+
+    pub fn mask(&self) -> Option<u32> {
+        match self {
+            Self::AggregateMask(mask) | Self::UniqueAreaMask(mask) => Some(*mask),
+            _ => None,
+        }
+    }
+}
+
 pub struct LdtkMapBuilder<'a> {
     pub pixel_world_scale: f32,
     pub image_shader: Option<ShaderRef>,
@@ -25,8 +46,8 @@ pub struct LdtkMapBuilder<'a> {
     pub texture_filtering: GlowTextureFiltering,
     #[allow(clippy::type_complexity)]
     pub tileset_reference_extractor: Option<Box<dyn Fn(&str) -> String + 'a>>,
-    /// [(int grid value identifier, collision mask)]
-    pub int_grid_colliders: &'a [(&'a str, u32)],
+    #[allow(clippy::type_complexity)]
+    pub int_grid_collision_extractor: Box<dyn Fn(&str) -> LdtkMapColliderResult + 'a>,
 }
 
 impl Default for LdtkMapBuilder<'_> {
@@ -37,7 +58,7 @@ impl Default for LdtkMapBuilder<'_> {
             sampler: "u_image".into(),
             texture_filtering: Default::default(),
             tileset_reference_extractor: None,
-            int_grid_colliders: &[],
+            int_grid_collision_extractor: Box::new(|_| LdtkMapColliderResult::Ignore),
         }
     }
 }
@@ -63,8 +84,11 @@ impl<'a> LdtkMapBuilder<'a> {
         self
     }
 
-    pub fn int_grid_colliders(mut self, colliders: &'a [(&'a str, u32)]) -> Self {
-        self.int_grid_colliders = colliders;
+    pub fn int_grid_collision_extractor(
+        mut self,
+        extractor: impl Fn(&str) -> LdtkMapColliderResult + 'a,
+    ) -> Self {
+        self.int_grid_collision_extractor = Box::new(extractor);
         self
     }
 
@@ -148,51 +172,51 @@ impl<'a> LdtkMapBuilder<'a> {
                         })
                     })
                     .collect();
-                let colliders = level
-                    .layer_instances
-                    .as_ref()
-                    .into_iter()
-                    .flatten()
-                    .rev()
-                    .flat_map(|layer| {
-                        let layer_definition = ldtk
-                            .defs
-                            .layers
+                let mut colliders = vec![];
+                for layer in level.layer_instances.as_ref().into_iter().flatten().rev() {
+                    let layer_definition = ldtk
+                        .defs
+                        .layers
+                        .iter()
+                        .find(|definition| definition.uid == layer.layer_def_uid)
+                        .unwrap();
+                    for (index, value) in layer.int_grid_csv.iter().enumerate() {
+                        let index = index as i64;
+                        let Some(value_definition) = layer_definition
+                            .int_grid_values
                             .iter()
-                            .find(|definition| definition.uid == layer.layer_def_uid)
-                            .unwrap();
-                        layer
-                            .int_grid_csv
-                            .iter()
-                            .enumerate()
-                            .filter_map(|(index, value)| {
-                                let index = index as i64;
-                                let value_definition = layer_definition
-                                    .int_grid_values
-                                    .iter()
-                                    .find(|v| v.value == *value)?;
-                                let value_id = value_definition.identifier.as_deref()?;
-                                let mask =
-                                    self.int_grid_colliders.iter().find_map(|(id, mask)| {
-                                        if *id == value_id { Some(mask) } else { None }
-                                    })?;
-                                let col = index % layer.c_wid;
-                                let row = index / layer.c_wid;
-                                Some(MapCollider {
-                                    enabled: true,
-                                    rectangle: Rect {
-                                        x: (col * layer.grid_size + layer.px_total_offset_x) as f32
-                                            * self.pixel_world_scale,
-                                        y: (row * layer.grid_size + layer.px_total_offset_y) as f32
-                                            * self.pixel_world_scale,
-                                        w: layer.grid_size as f32 * self.pixel_world_scale,
-                                        h: layer.grid_size as f32 * self.pixel_world_scale,
-                                    },
-                                    mask: *mask,
-                                })
-                            })
-                    })
-                    .collect();
+                            .find(|v| v.value == *value)
+                        else {
+                            continue;
+                        };
+                        let Some(value_id) = value_definition.identifier.as_deref() else {
+                            continue;
+                        };
+                        let col = index % layer.c_wid;
+                        let row = index / layer.c_wid;
+                        let rectangle = Rect {
+                            x: (col * layer.grid_size + layer.px_total_offset_x) as f32
+                                * self.pixel_world_scale,
+                            y: (row * layer.grid_size + layer.px_total_offset_y) as f32
+                                * self.pixel_world_scale,
+                            w: layer.grid_size as f32 * self.pixel_world_scale,
+                            h: layer.grid_size as f32 * self.pixel_world_scale,
+                        };
+                        let result = self.int_grid_collision_extractor.as_ref()(value_id);
+                        if result.does_clear_area() {
+                            colliders.retain(|collider: &MapCollider| {
+                                !collider.rectangle.collides_with_rect(rectangle)
+                            });
+                        }
+                        if let Some(mask) = result.mask() {
+                            colliders.push(MapCollider {
+                                enabled: true,
+                                rectangle,
+                                mask,
+                            });
+                        }
+                    }
+                }
                 MapLevel {
                     visible: true,
                     layers,

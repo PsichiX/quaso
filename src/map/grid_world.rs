@@ -80,7 +80,7 @@ pub struct GridWorld {
     pub visible_layers: Range<usize>,
     map_layers: Vec<GridWorldLayer>,
     tile_instances: Vec<TileInstance>,
-    colliders: Grid<bool>,
+    colliders: Grid<u8>,
 }
 
 impl GridWorld {
@@ -94,7 +94,7 @@ impl GridWorld {
             visible_layers: 0..1,
             map_layers: vec![terrain_layer],
             tile_instances: Default::default(),
-            colliders: Grid::new(size, false),
+            colliders: Grid::new(size, 0),
         }
     }
 
@@ -155,7 +155,7 @@ impl GridWorld {
         self
     }
 
-    pub fn with_colliders(mut self, grid: Grid<bool>) -> Self {
+    pub fn with_colliders(mut self, grid: Grid<u8>) -> Self {
         if self.colliders.size() == grid.size() {
             self.colliders = grid;
         }
@@ -195,11 +195,24 @@ impl GridWorld {
     }
 
     pub fn collider(&self, location: Vec2<usize>) -> bool {
-        self.colliders.get(location).unwrap_or_default()
+        self.colliders.get(location).unwrap_or_default() > 0
     }
 
-    pub fn set_collider(&mut self, location: Vec2<usize>, value: bool) {
-        self.colliders.set(location, value);
+    pub fn set_collider(&mut self, location: Vec2<usize>, value: bool) -> u8 {
+        let old_value = self.colliders.get(location).unwrap_or_default();
+        self.colliders.set(
+            location,
+            if value {
+                old_value.saturating_add(1)
+            } else {
+                old_value.saturating_sub(1)
+            },
+        );
+        old_value
+    }
+
+    pub fn clear_collider(&mut self, location: Vec2<usize>) {
+        self.colliders.set(location, 0);
     }
 
     pub fn layers(&self) -> &[GridWorldLayer] {

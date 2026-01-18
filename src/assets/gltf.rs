@@ -415,7 +415,7 @@ fn process_animation(
             ReadOutputs::Rotations(iter) => {
                 let rotations = iter
                     .into_f32()
-                    .map(|v| Quaternion::from_vec4(v.into()))
+                    .map(|v| Quaternion::from_vec4(v.into()).normalized())
                     .collect::<Vec<Quaternion<f32>>>();
                 GltfAnimationValues::Rotation(rotations)
             }
@@ -523,7 +523,7 @@ fn process_node(
         name,
         transform: Transform {
             position: translation.into(),
-            orientation: Quaternion::from_vec4(rotation.into()),
+            orientation: Quaternion::from_vec4(rotation.into()).normalized(),
             scale: scale.into(),
         },
         mesh_handle,

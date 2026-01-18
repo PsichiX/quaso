@@ -1,16 +1,16 @@
 use crate::game::{enemy::EnemyState, item::Item};
 use quaso::{
+    gc::Gc,
     third_party::{
         rstar::{AABB, Envelope, Point, PointDistance, RTree, RTreeObject},
         typid::ID,
         vek::Vec2,
     },
-    value::{Ptr, Val},
 };
 use std::cell::RefCell;
 
 thread_local! {
-    static INSTANCE: RefCell<Val<Space>> = Default::default();
+    static INSTANCE: RefCell<Gc<Space>> = Default::default();
 }
 
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
@@ -73,8 +73,8 @@ pub struct Space {
 }
 
 impl Space {
-    pub fn access() -> Ptr<Self> {
-        INSTANCE.with(|instance| instance.borrow().pointer())
+    pub fn access() -> Gc<Self> {
+        INSTANCE.with(|instance| instance.borrow().reference())
     }
 
     pub fn maintain(&mut self, objects: Vec<SpaceObject>) {

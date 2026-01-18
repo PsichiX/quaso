@@ -8,6 +8,7 @@ use crate::{
     },
     audio::Audio,
     context::{GameContext, GameSubsystems},
+    gc::{DynGc, Gc},
     third_party::{
         Duration, Instant,
         windowing::{
@@ -15,13 +16,16 @@ use crate::{
             window::Window,
         },
     },
-    value::{DynPtr, DynVal, Ptr, Val},
 };
 use anput::{scheduler::GraphScheduler, universe::Universe};
 use gilrs::Gilrs;
 use intuicio_data::managed::DynamicManagedLazy;
 use keket::database::AssetDatabase;
-use moirai::jobs::{JobHandle, JobLocation, JobOptions, JobQueue, Jobs};
+use moirai::{
+    job::{JobHandle, JobLocation, JobOptions},
+    jobs::Jobs,
+    queue::JobQueue,
+};
 use nodio::graph::Graph;
 use spitfire_draw::{
     context::DrawContext,
@@ -36,6 +40,7 @@ use spitfire_gui::context::GuiContext;
 use spitfire_input::InputContext;
 use std::{
     any::{Any, TypeId},
+    borrow::Cow,
     cell::LazyCell,
     collections::BTreeMap,
     pin::Pin,
@@ -98,6 +103,10 @@ pub trait GameState {
     ) -> Pin<Box<dyn Future<Output = ()> + Send + Sync>> {
         Box::pin(async {})
     }
+
+    fn can_reentry_from_background(&self) -> bool {
+        false
+    }
 }
 
 pub trait GameSubsystem {
@@ -154,7 +163,7 @@ impl EditorGlobals {
 }
 
 pub struct GameGlobals {
-    globals: BTreeMap<TypeId, DynVal>,
+    globals: BTreeMap<TypeId, DynGc>,
     is_touch_device: LazyCell<bool>,
     #[cfg(feature = "editor")]
     pub editor: EditorGlobals,
@@ -196,24 +205,24 @@ impl Default for GameGlobals {
 
 impl GameGlobals {
     pub fn set<T: 'static>(&mut self, value: T) {
-        self.globals.insert(TypeId::of::<T>(), DynVal::new(value));
+        self.globals.insert(TypeId::of::<T>(), DynGc::new(value));
     }
 
     pub fn unset<T: 'static>(&mut self) {
         self.globals.remove(&TypeId::of::<T>());
     }
 
-    pub fn access<T: 'static>(&'_ self) -> Option<Ptr<T>> {
+    pub fn access<T: 'static>(&'_ self) -> Option<Gc<T>> {
         self.globals
             .get(&TypeId::of::<T>())
-            .map(|v| v.pointer().into_typed())
+            .map(|v| v.reference().into_typed())
     }
 
-    pub fn ensure<T: Default + 'static>(&mut self) -> Ptr<T> {
+    pub fn ensure<T: Default + 'static>(&mut self) -> Gc<T> {
         self.globals
             .entry(TypeId::of::<T>())
-            .or_insert_with(|| DynVal::new(T::default()))
-            .pointer()
+            .or_insert_with(|| DynGc::new(T::default()))
+            .reference()
             .into_typed()
     }
 
@@ -237,13 +246,13 @@ impl GameJobs {
 
     pub fn coroutine_with_meta<T: Send>(
         &self,
-        meta: impl IntoIterator<Item = (String, DynPtr)>,
+        meta: impl IntoIterator<Item = (Cow<'static, str>, DynGc)>,
         job: impl Future<Output = T> + Send + Sync + 'static,
     ) -> JobHandle<T> {
         self.spawn(
             JobOptions::default()
                 .location(JobLocation::Local)
-                .meta_many(meta.into_iter().map(|(id, ptr)| (id, ptr.into_inner()))),
+                .meta_many(meta.into_iter().map(|(id, gc)| (id, gc.0.into()))),
             job,
         )
     }
@@ -274,7 +283,7 @@ pub struct GameInstance {
     total_timer: Instant,
     frame: usize,
     #[allow(clippy::type_complexity)]
-    states: Vec<(Box<dyn GameState>, JobHandle<()>, Val<()>)>,
+    states: Vec<(Box<dyn GameState>, JobHandle<()>, Gc<()>)>,
     state_change: GameStateChange,
     subsystems: Vec<Box<dyn GameSubsystem>>,
     globals: GameGlobals,
@@ -485,7 +494,7 @@ impl GameInstance {
                             continue;
                         }
                     }
-                    let state_value = Val::new(());
+                    let state_value = Gc::new(());
                     let state_heartbeat = state_value.heartbeat();
                     state.enter(GameContext {
                         graphics,
@@ -544,7 +553,35 @@ impl GameInstance {
                     self.timer = Instant::now();
                 }
                 GameStateChange::Push(mut state) => {
-                    let state_value = Val::new(());
+                    if let Some((state, _, state_value)) = self.states.last_mut()
+                        && state.can_reentry_from_background()
+                    {
+                        let state_heartbeat = state_value.heartbeat();
+                        state.exit(GameContext {
+                            graphics,
+                            draw: &mut self.draw,
+                            gui: &mut self.gui,
+                            input: &mut self.input,
+                            state_change: &mut self.state_change,
+                            assets: &mut self.assets,
+                            audio: &mut self.audio,
+                            globals: &mut self.globals,
+                            jobs: Some(&self.jobs),
+                            update_queue: &self.next_update_queue,
+                            fixed_update_queue: &self.next_fixed_update_queue,
+                            draw_queue: &self.next_draw_queue,
+                            draw_gui_queue: &self.next_draw_gui_queue,
+                            universe: &mut self.universe,
+                            graph: &mut self.graph,
+                            state_heartbeat: &state_heartbeat,
+                            subsystems: GameSubsystems {
+                                subsystems: &mut self.subsystems,
+                            },
+                            time: total_time,
+                            frame: self.frame,
+                        });
+                    }
+                    let state_value = Gc::new(());
                     let state_heartbeat = state_value.heartbeat();
                     state.enter(GameContext {
                         graphics,
@@ -632,6 +669,34 @@ impl GameInstance {
                     }
                     if self.state_change.is_change() {
                         continue;
+                    }
+                    if let Some((state, _, state_value)) = self.states.last_mut()
+                        && state.can_reentry_from_background()
+                    {
+                        let state_heartbeat = state_value.heartbeat();
+                        state.enter(GameContext {
+                            graphics,
+                            draw: &mut self.draw,
+                            gui: &mut self.gui,
+                            input: &mut self.input,
+                            state_change: &mut self.state_change,
+                            assets: &mut self.assets,
+                            audio: &mut self.audio,
+                            globals: &mut self.globals,
+                            jobs: Some(&self.jobs),
+                            update_queue: &self.next_update_queue,
+                            fixed_update_queue: &self.next_fixed_update_queue,
+                            draw_queue: &self.next_draw_queue,
+                            draw_gui_queue: &self.next_draw_gui_queue,
+                            universe: &mut self.universe,
+                            graph: &mut self.graph,
+                            state_heartbeat: &state_heartbeat,
+                            subsystems: GameSubsystems {
+                                subsystems: &mut self.subsystems,
+                            },
+                            time: total_time,
+                            frame: self.frame,
+                        });
                     }
                     self.timer = Instant::now();
                 }
@@ -742,10 +807,12 @@ impl GameInstance {
                 self.jobs.jobs.run_queue_with_meta(
                     &self.update_queue,
                     [
-                        (CONTEXT_META.to_owned(), async_context_lazy),
-                        (DELTA_TIME_META.to_owned(), delta_time_lazy),
-                        (NEXT_FRAME_QUEUE_META.to_owned(), next_frame_queue_lazy),
-                    ],
+                        (CONTEXT_META.into(), async_context_lazy.into()),
+                        (DELTA_TIME_META.into(), delta_time_lazy.into()),
+                        (NEXT_FRAME_QUEUE_META.into(), next_frame_queue_lazy.into()),
+                    ]
+                    .into_iter()
+                    .collect(),
                 );
             }
             #[cfg(feature = "editor")]
@@ -878,10 +945,12 @@ impl GameInstance {
                     self.jobs.jobs.run_queue_with_meta(
                         &self.fixed_update_queue,
                         [
-                            (CONTEXT_META.to_owned(), async_context_lazy),
-                            (DELTA_TIME_META.to_owned(), delta_time_lazy),
-                            (NEXT_FRAME_QUEUE_META.to_owned(), next_frame_queue_lazy),
-                        ],
+                            (CONTEXT_META.into(), async_context_lazy.into()),
+                            (DELTA_TIME_META.into(), delta_time_lazy.into()),
+                            (NEXT_FRAME_QUEUE_META.into(), next_frame_queue_lazy.into()),
+                        ]
+                        .into_iter()
+                        .collect(),
                     );
                 }
                 #[cfg(feature = "editor")]
@@ -1012,10 +1081,12 @@ impl GameInstance {
             self.jobs.jobs.run_queue_with_meta(
                 &self.draw_queue,
                 [
-                    (CONTEXT_META.to_owned(), async_context_lazy),
-                    (DELTA_TIME_META.to_owned(), delta_time_lazy),
-                    (NEXT_FRAME_QUEUE_META.to_owned(), next_frame_queue_lazy),
-                ],
+                    (CONTEXT_META.into(), async_context_lazy.into()),
+                    (DELTA_TIME_META.into(), delta_time_lazy.into()),
+                    (NEXT_FRAME_QUEUE_META.into(), next_frame_queue_lazy.into()),
+                ]
+                .into_iter()
+                .collect(),
             );
         }
         #[cfg(feature = "editor")]
@@ -1135,10 +1206,12 @@ impl GameInstance {
             self.jobs.jobs.run_queue_with_meta(
                 &self.draw_gui_queue,
                 [
-                    (CONTEXT_META.to_owned(), async_context_lazy),
-                    (DELTA_TIME_META.to_owned(), delta_time_lazy),
-                    (NEXT_FRAME_QUEUE_META.to_owned(), next_frame_queue_lazy),
-                ],
+                    (CONTEXT_META.into(), async_context_lazy.into()),
+                    (DELTA_TIME_META.into(), delta_time_lazy.into()),
+                    (NEXT_FRAME_QUEUE_META.into(), next_frame_queue_lazy.into()),
+                ]
+                .into_iter()
+                .collect(),
             );
         }
         #[cfg(feature = "editor")]
@@ -1224,7 +1297,8 @@ impl GameInstance {
         while !self
             .jobs
             .jobs
-            .queue_filter_count(|_, location, _, _, _| location == &JobLocation::Local)
+            .queue()
+            .filter_count(|object| object.location() == &JobLocation::Local)
             > 0
         {
             let mut async_context = GameContext {
@@ -1258,10 +1332,12 @@ impl GameInstance {
             self.jobs.jobs.run_local_timeout_with_meta(
                 frame_budget,
                 [
-                    (CONTEXT_META.to_owned(), async_context_lazy),
-                    (DELTA_TIME_META.to_owned(), delta_time_lazy),
-                    (NEXT_FRAME_QUEUE_META.to_owned(), next_frame_queue_lazy),
-                ],
+                    (CONTEXT_META.into(), async_context_lazy.into()),
+                    (DELTA_TIME_META.into(), delta_time_lazy.into()),
+                    (NEXT_FRAME_QUEUE_META.into(), next_frame_queue_lazy.into()),
+                ]
+                .into_iter()
+                .collect(),
             );
             if jobs_timer.elapsed() >= frame_budget {
                 break;
@@ -1299,7 +1375,7 @@ impl AppState<Vertex> for GameInstance {
     fn on_init(&mut self, _graphics: &mut Graphics<Vertex>, _: &mut AppControl) {
         #[cfg(feature = "editor")]
         {
-            let temp = Val::new(());
+            let temp = Gc::new(());
             let state_heartbeat = temp.heartbeat();
             self.editor.initialize(GameContext {
                 graphics: _graphics,

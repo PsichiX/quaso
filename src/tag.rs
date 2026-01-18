@@ -1,7 +1,8 @@
 use std::{
     borrow::Cow,
+    collections::HashSet,
     hash::{Hash, Hasher},
-    ops::Range,
+    ops::{Deref, DerefMut, Range},
     str::FromStr,
 };
 
@@ -119,6 +120,18 @@ impl PartialEq for Tag {
     }
 }
 
+impl PartialOrd for Tag {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for Tag {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.content.cmp(&other.content)
+    }
+}
+
 impl Eq for Tag {}
 
 impl std::fmt::Debug for Tag {
@@ -148,6 +161,107 @@ impl FromStr for Tag {
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         Ok(Self::new(s.to_owned()))
+    }
+}
+
+#[derive(Debug, Default, Clone, PartialEq, Eq)]
+pub struct Tags(HashSet<Tag>);
+
+impl Tags {
+    pub fn with(mut self, tag: impl Into<Tag>) -> Self {
+        self.0.insert(tag.into());
+        self
+    }
+
+    pub fn matching_any_iter(&self, other: &Self) -> impl Iterator<Item = &Tag> {
+        self.0.iter().filter(move |tag| other.matches_any(tag))
+    }
+
+    pub fn matching_all_iter(&self, other: &Self) -> impl Iterator<Item = &Tag> {
+        self.0.iter().filter(move |tag| other.matches_all(tag))
+    }
+
+    pub fn matches_any(&self, tag: &Tag) -> bool {
+        self.0.iter().any(|t| t.matches(tag))
+    }
+
+    pub fn matches_all(&self, tag: &Tag) -> bool {
+        self.0.iter().all(|t| t.matches(tag))
+    }
+
+    pub fn matching_union_any(&self, other: &Self) -> Self {
+        Self(
+            self.0
+                .iter()
+                .filter(|tag| other.matches_any(tag))
+                .cloned()
+                .collect(),
+        )
+    }
+
+    pub fn matching_union_all(&self, other: &Self) -> Self {
+        Self(
+            self.0
+                .iter()
+                .filter(|tag| other.matches_all(tag))
+                .cloned()
+                .collect(),
+        )
+    }
+
+    pub fn matching_difference_any(&self, other: &Self) -> Self {
+        Self(
+            self.0
+                .iter()
+                .filter(|tag| !other.matches_any(tag))
+                .cloned()
+                .collect(),
+        )
+    }
+
+    pub fn matching_difference_all(&self, other: &Self) -> Self {
+        Self(
+            self.0
+                .iter()
+                .filter(|tag| !other.matches_all(tag))
+                .cloned()
+                .collect(),
+        )
+    }
+}
+
+impl From<HashSet<Tag>> for Tags {
+    fn from(value: HashSet<Tag>) -> Self {
+        Self(value)
+    }
+}
+
+impl FromIterator<Tag> for Tags {
+    fn from_iter<T: IntoIterator<Item = Tag>>(iter: T) -> Self {
+        Self(iter.into_iter().collect())
+    }
+}
+
+impl IntoIterator for Tags {
+    type Item = Tag;
+    type IntoIter = std::collections::hash_set::IntoIter<Tag>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.0.into_iter()
+    }
+}
+
+impl Deref for Tags {
+    type Target = HashSet<Tag>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl DerefMut for Tags {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.0
     }
 }
 

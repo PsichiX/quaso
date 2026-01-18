@@ -1,11 +1,11 @@
 use crate::{
     audio::Audio,
     game::{GameGlobals, GameJobs, GameStateChange, GameSubsystem},
-    value::Heartbeat,
+    gc::Heartbeat,
 };
 use anput::universe::Universe;
 use keket::database::AssetDatabase;
-use moirai::jobs::JobQueue;
+use moirai::queue::JobQueue;
 use nodio::graph::Graph;
 use spitfire_draw::{context::DrawContext, utils::Vertex};
 use spitfire_glow::graphics::Graphics;

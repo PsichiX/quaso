@@ -1,14 +1,15 @@
 use crate::{
     context::GameContext,
     game::{CONTEXT_META, DELTA_TIME_META, NEXT_FRAME_QUEUE_META},
-    value::{DynPtr, Heartbeat},
+    gc::{DynGc, Heartbeat},
 };
 use keket::database::handle::AssetHandle;
 use moirai::{
     coroutine::{meta, move_to, spawn, yield_now},
-    jobs::{JobHandle, JobLocation, JobOptions, JobQueue},
+    job::{JobHandle, JobLocation, JobOptions},
+    queue::JobQueue,
 };
-use std::{future::poll_fn, task::Poll};
+use std::{borrow::Cow, future::poll_fn, task::Poll};
 
 pub async fn async_heartbeat_bound<F: Future>(
     heartbeats: impl IntoIterator<Item = Heartbeat>,
@@ -107,7 +108,7 @@ where
 }
 
 pub async fn coroutine_with_meta<F>(
-    meta: impl IntoIterator<Item = (String, DynPtr)>,
+    meta: impl IntoIterator<Item = (Cow<'static, str>, DynGc)>,
     job: F,
 ) -> JobHandle<F::Output>
 where
@@ -117,7 +118,7 @@ where
     spawn(
         JobOptions::default()
             .location(JobLocation::Local)
-            .meta_many(meta.into_iter().map(|(id, ptr)| (id, ptr.into_inner()))),
+            .meta_many(meta.into_iter().map(|(id, gc)| (id, gc.0.into()))),
         job,
     )
     .await

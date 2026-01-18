@@ -5,6 +5,7 @@ use quaso::{
     context::GameContext,
     coroutine::{async_delay, async_delta_time, async_next_frame},
     game::{GameInstance, GameState, GameStateChange},
+    gc::Gc,
     third_party::{
         rand::{Rng, rng},
         spitfire_draw::{
@@ -19,7 +20,6 @@ use quaso::{
         vek::Vec2,
         windowing::event::VirtualKeyCode,
     },
-    value::Val,
 };
 use std::error::Error;
 
@@ -82,7 +82,7 @@ impl GameState for Preloader {
 struct State {
     ferris: Sprite,
     exit: InputActionRef,
-    position: Val<Vec2<f32>>,
+    position: Gc<Vec2<f32>>,
 }
 
 impl GameState for State {
@@ -101,9 +101,9 @@ impl GameState for State {
                 self.exit.clone(),
             ));
 
-        // Get lazy managed value of the interpolated position.
+        // Get GC reference of the interpolated position.
         // This allows us to read and write the position in an async-safe manner.
-        let position = self.position.pointer();
+        let mut position = self.position.reference();
         // Start a coroutine to handle the interpolated movement.
         context.jobs.unwrap().coroutine(async move {
             // interpolated movement never ends.

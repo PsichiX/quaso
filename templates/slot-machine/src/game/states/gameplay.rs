@@ -4,12 +4,12 @@ use quaso::{
     context::GameContext,
     coroutine::async_heartbeat_bound,
     game::{GameObject, GameState, GameStateChange},
+    gc::Gc,
     third_party::{
         spitfire_glow::graphics::{CameraScaling, Shader},
         spitfire_input::{InputActionRef, InputConsume, InputMapping, VirtualAction},
         windowing::event::VirtualKeyCode,
     },
-    value::Val,
 };
 
 pub const WRAPPED_TEXTURED_FRAGMENT: &str = r#"#version 300 es
@@ -28,7 +28,7 @@ void main() {
 
 #[derive(Default)]
 pub struct Gameplay {
-    pub machine: Val<SlotMachine>,
+    pub machine: Gc<SlotMachine>,
     pub action: InputActionRef,
     pub exit: InputActionRef,
 }
@@ -103,7 +103,7 @@ impl GameState for Gameplay {
             return;
         }
         if self.action.get().is_down() {
-            let machine = self.machine.pointer();
+            let machine = self.machine.reference();
             context
                 .jobs
                 .unwrap()

@@ -1,4 +1,4 @@
-use crate::assets::spine::SpineAsset;
+use crate::{assets::spine::SpineAsset, context::GameContext, game::GameObject};
 use rusty_spine::{
     AnimationEvent, AnimationStateData, BlendMode, Physics,
     controller::{SkeletonCombinedRenderable, SkeletonController},
@@ -313,6 +313,7 @@ impl SpineSkeleton {
         context: &mut DrawContext,
         graphics: &mut dyn GraphicsTarget<Vertex>,
     ) {
+        let matrix = context.top_transform();
         for renderable in renderables {
             let batch = GraphicsBatch {
                 shader: context.shader(self.shader.as_ref()),
@@ -352,23 +353,32 @@ impl SpineSkeleton {
                 wireframe: false,
             };
             graphics.state_mut().stream.batch_optimized(batch);
-            graphics.state_mut().stream.extend(
-                renderable
-                    .vertices
-                    .iter()
-                    .copied()
-                    .zip(renderable.uvs.iter().copied())
-                    .zip(renderable.colors.iter().copied())
-                    .map(|((position, uv), color)| Vertex {
-                        position: [position[0], -position[1]],
-                        uv: [uv[0], uv[1], 0.0],
-                        color,
-                    }),
-                renderable.indices.chunks(3).map(|chunk| Triangle {
-                    a: chunk[0] as _,
-                    b: chunk[1] as _,
-                    c: chunk[2] as _,
-                }),
+            graphics.state_mut().stream.transformed(
+                |stream| {
+                    stream.extend(
+                        renderable
+                            .vertices
+                            .iter()
+                            .copied()
+                            .zip(renderable.uvs.iter().copied())
+                            .zip(renderable.colors.iter().copied())
+                            .map(|((position, uv), color)| Vertex {
+                                position: [position[0], -position[1]],
+                                uv: [uv[0], uv[1], 0.0],
+                                color,
+                            }),
+                        renderable.indices.chunks(3).map(|chunk| Triangle {
+                            a: chunk[0] as _,
+                            b: chunk[1] as _,
+                            c: chunk[2] as _,
+                        }),
+                    );
+                },
+                |vertex| {
+                    let point = matrix.mul_point(Vec2::from(vertex.position));
+                    vertex.position[0] = point.x;
+                    vertex.position[1] = point.y;
+                },
             );
         }
     }
@@ -380,6 +390,13 @@ impl Drawable for SpineSkeleton {
             let renderables = controller.combined_renderables();
             self.draw_renderables(&renderables, context, graphics);
         }
+    }
+}
+
+impl GameObject for SpineSkeleton {
+    fn draw(&mut self, context: &mut GameContext) {
+        let this: &mut dyn Drawable = self;
+        this.draw(context.draw, context.graphics);
     }
 }
 
@@ -563,5 +580,12 @@ impl Drawable for BudgetedSpineSkeleton {
             lod.skeleton
                 .draw_renderables(&self.cached_renderables, context, graphics);
         }
+    }
+}
+
+impl GameObject for BudgetedSpineSkeleton {
+    fn draw(&mut self, context: &mut GameContext) {
+        let this: &mut dyn Drawable = self;
+        this.draw(context.draw, context.graphics);
     }
 }

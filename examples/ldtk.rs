@@ -8,7 +8,7 @@ use quaso::{
     config::Config,
     context::GameContext,
     game::{GameInstance, GameState, GameStateChange},
-    map::{LdtkMapBuilder, Map, ldtk::EntityInstance},
+    map::{LdtkMapBuilder, LdtkMapColliderResult, Map, ldtk::EntityInstance},
     third_party::{
         rand::{Rng, rng},
         spitfire_draw::{
@@ -104,13 +104,14 @@ impl GameState for State {
             asset.build_map(
                 LdtkMapBuilder::default()
                     .image_shader(ShaderRef::name("image"))
-                    .int_grid_colliders(&[
-                        ("Buildings", 1 << 0),
-                        ("Forest", 1 << 0),
-                        ("Walls", 1 << 0),
-                        ("Water", 1 << 1),
-                        ("Mountains", 1 << 0),
-                    ]),
+                    .int_grid_collision_extractor(|name| match name {
+                        "Buildings" => LdtkMapColliderResult::AggregateMask(1 << 0),
+                        "Forest" => LdtkMapColliderResult::AggregateMask(1 << 0),
+                        "Walls" => LdtkMapColliderResult::AggregateMask(1 << 0),
+                        "Water" => LdtkMapColliderResult::AggregateMask(1 << 1),
+                        "Mountains" => LdtkMapColliderResult::AggregateMask(1 << 0),
+                        _ => LdtkMapColliderResult::Ignore,
+                    }),
             ),
         );
 

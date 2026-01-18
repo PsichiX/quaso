@@ -1,15 +1,11 @@
-use crate::{
-    context::GameContext,
-    game::GameObject,
-    value::{Ptr, Val},
-};
+use crate::{context::GameContext, game::GameObject, gc::Gc};
 use emergent::task::Task;
 use spitfire_input::{InputMapping, InputMappingRef};
 use typid::ID;
 
 pub struct CharacterMemory<State> {
     pub delta_time: f32,
-    pub state: Ptr<State>,
+    pub state: Gc<State>,
 }
 
 #[derive(Default)]
@@ -37,7 +33,7 @@ impl<State> CharacterController<State> {
 }
 
 pub struct Character<State: GameObject> {
-    pub state: Val<State>,
+    pub state: Gc<State>,
     task: Box<dyn Task<CharacterMemory<State>>>,
     controller: CharacterController<State>,
 }
@@ -49,7 +45,7 @@ impl<State: GameObject> Character<State> {
         controller: CharacterController<State>,
     ) -> Self {
         Self {
-            state: Val::new(state),
+            state: Gc::new(state),
             task: Box::new(task),
             controller,
         }
@@ -73,13 +69,13 @@ impl<State: GameObject> GameObject for Character<State> {
             CharacterController::Ai(task) => {
                 task.on_enter(&mut CharacterMemory {
                     delta_time: 0.0,
-                    state: self.state.pointer(),
+                    state: self.state.reference(),
                 });
             }
         }
         let mut memory = CharacterMemory {
             delta_time: 0.0,
-            state: self.state.pointer(),
+            state: self.state.reference(),
         };
         self.state.write().activate(context);
         self.task.on_enter(&mut memory);
@@ -97,13 +93,13 @@ impl<State: GameObject> GameObject for Character<State> {
             CharacterController::Ai(task) => {
                 task.on_exit(&mut CharacterMemory {
                     delta_time: 0.0,
-                    state: self.state.pointer(),
+                    state: self.state.reference(),
                 });
             }
         }
         let mut memory = CharacterMemory {
             delta_time: 0.0,
-            state: self.state.pointer(),
+            state: self.state.reference(),
         };
         self.task.on_exit(&mut memory);
         self.state.write().deactivate(context);
@@ -113,14 +109,14 @@ impl<State: GameObject> GameObject for Character<State> {
         if let CharacterController::Ai(task) = &mut self.controller {
             let mut memory = CharacterMemory {
                 delta_time,
-                state: self.state.pointer(),
+                state: self.state.reference(),
             };
             task.on_process(&mut memory);
             task.on_update(&mut memory);
         }
         let mut memory = CharacterMemory {
             delta_time,
-            state: self.state.pointer(),
+            state: self.state.reference(),
         };
         self.task.on_process(&mut memory);
         self.task.on_update(&mut memory);

@@ -2,7 +2,8 @@ use quaso::{
     GameLauncher,
     animation::gltf::{
         GltfAnimationBlendSpace, GltfAnimationBlendSpacePoint, GltfAnimationTarget,
-        GltfRenderablesOptions, GltfSceneAnimation, GltfSceneInstance, GltfSceneTemplate,
+        GltfRenderablesOptions, GltfSceneAnimation, GltfSceneAttribute, GltfSceneInstance,
+        GltfSceneTemplate, GltfSceneTransform,
     },
     assets::{make_directory_database, shader::ShaderAsset},
     config::Config,
@@ -10,12 +11,20 @@ use quaso::{
     coroutine::{async_game_context, async_wait_for_asset},
     game::{GameInstance, GameState, GameStateChange},
     third_party::{
-        spitfire_draw::utils::Drawable,
-        spitfire_glow::graphics::{CameraScaling, Shader},
+        nodio::query::Related,
+        spitfire_draw::{
+            utils::Drawable,
+            {sprite::Sprite, utils::ShaderRef},
+        },
+        spitfire_glow::{
+            graphics::{CameraScaling, Shader},
+            renderer::GlowBlending,
+        },
         spitfire_input::{
             CardinalInputCombinator, InputActionRef, InputConsume, InputMapping, VirtualAction,
             VirtualKeyCode,
         },
+        vek::{Rgba, Vec2, Vec3},
     },
 };
 use std::{error::Error, pin::Pin};
@@ -41,6 +50,7 @@ impl GameState for Preloader {
         context.graphics.state.color = [0.2, 0.2, 0.2, 1.0];
         context.graphics.state.main_camera.screen_alignment = [0.5, 0.8].into();
         context.graphics.state.main_camera.scaling = CameraScaling::FitVertical(1.5);
+        context.graphics.state.main_camera.transform.scale = Vec3::new(1.0, -1.0, 1.0);
 
         context
             .assets
@@ -99,7 +109,7 @@ impl GameState for Preloader {
 
                 let instance = scene
                     .access::<&GltfSceneTemplate>(context.assets)
-                    .instantiate(Default::default())
+                    .instantiate(context.assets)
                     .with_animation(
                         "idle",
                         GltfSceneAnimation::new(
@@ -107,7 +117,9 @@ impl GameState for Preloader {
                                 .assets
                                 .find("gltf-anim://stickerman.glb/TPose")
                                 .unwrap(),
+                            context.assets,
                         )
+                        .unwrap()
                         .weight(0.0)
                         .playing(true)
                         .looped(true),
@@ -119,7 +131,9 @@ impl GameState for Preloader {
                                 .assets
                                 .find("gltf-anim://stickerman.glb/Walk")
                                 .unwrap(),
+                            context.assets,
                         )
+                        .unwrap()
                         .weight(0.0)
                         .playing(true)
                         .looped(true),
@@ -131,7 +145,9 @@ impl GameState for Preloader {
                                 .assets
                                 .find("gltf-anim://stickerman.glb/Run")
                                 .unwrap(),
+                            context.assets,
                         )
+                        .unwrap()
                         .weight(0.0)
                         .playing(true)
                         .looped(true),
@@ -143,7 +159,9 @@ impl GameState for Preloader {
                                 .assets
                                 .find("gltf-anim://stickerman.glb/Run")
                                 .unwrap(),
+                            context.assets,
                         )
+                        .unwrap()
                         .weight(0.0)
                         .playing(true)
                         .looped(true),
@@ -155,7 +173,9 @@ impl GameState for Preloader {
                                 .assets
                                 .find("gltf-anim://stickerman.glb/Crouch")
                                 .unwrap(),
+                            context.assets,
                         )
+                        .unwrap()
                         .weight(0.0)
                         .playing(true)
                         .looped(true),
@@ -167,7 +187,9 @@ impl GameState for Preloader {
                                 .assets
                                 .find("gltf-anim://stickerman.glb/CrouchWalk")
                                 .unwrap(),
+                            context.assets,
                         )
+                        .unwrap()
                         .weight(0.0)
                         .playing(true)
                         .looped(true),
@@ -179,7 +201,9 @@ impl GameState for Preloader {
                                 .assets
                                 .find("gltf-anim://stickerman.glb/Jump")
                                 .unwrap(),
+                            context.assets,
                         )
+                        .unwrap()
                         .weight(0.0)
                         .playing(true)
                         .looped(true),
@@ -191,7 +215,9 @@ impl GameState for Preloader {
                                 .assets
                                 .find("gltf-anim://stickerman.glb/Falling")
                                 .unwrap(),
+                            context.assets,
                         )
+                        .unwrap()
                         .weight(0.0)
                         .playing(true)
                         .looped(true),
@@ -246,16 +272,17 @@ impl GameState for Preloader {
                             )),
                     );
 
-                instance.visit_tree(&mut |level, index, id, name, transform, mesh, skin| {
+                instance.visit_tree(&mut |level, index, id, name, transform, mesh, skin, bone| {
                     println!(
-                        "{}Node {} | id: {} | name: {} | transform: {} | mesh: {} | skin: {}",
+                        "{}Node {} | id: {} | name: {} | transform: {} | mesh: {} | skin: {} | bone: {}",
                         "  ".repeat(level),
                         index,
                         id,
                         name.map(|n| n.as_str()).unwrap_or("<unnamed>"),
                         transform.is_some(),
                         mesh.is_some(),
-                        skin.is_some()
+                        skin.is_some(),
+                        bone.is_some(),
                     );
                     true
                 });
@@ -332,11 +359,23 @@ impl GameState for State {
             .instance
             .build_renderables(
                 context.assets,
-                &GltfRenderablesOptions::default()
-                    .flip_axes([false, true])
-                    .sort_triangles_by_max_positive_z(),
+                &GltfRenderablesOptions::default().sort_triangles_by_max_positive_z(),
             )
             .unwrap();
         renderables.draw(context.draw, context.graphics);
+
+        if let Some(transform) = self
+            .instance
+            .query_bone_by_name::<Related<GltfSceneAttribute, &GltfSceneTransform>>("Bone.012")
+        {
+            Sprite::default()
+                .shader(ShaderRef::name("color"))
+                .position(transform.world_matrix().mul_point(Vec2::zero()))
+                .pivot(0.5.into())
+                .size(0.1.into())
+                .tint(Rgba::new(1.0, 0.0, 0.0, 0.5))
+                .blending(GlowBlending::Alpha)
+                .draw(context.draw, context.graphics);
+        }
     }
 }

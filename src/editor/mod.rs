@@ -156,7 +156,7 @@ impl Editor {
     }
 
     pub(crate) fn draw_gui(&mut self, mut context: GameContext) {
-        let viewport = context.globals.ensure::<EditorGameViewport>();
+        let mut viewport = context.globals.ensure::<EditorGameViewport>();
         viewport.write().widgets.clear();
         viewport.write().widgets.append(&mut self.game_widgets);
         if self.show_editor_while_running || context.globals.editor.is_editing() {

@@ -423,7 +423,7 @@ impl EditorSubsystem for EditableSubsystem {
         let shader = Self::shader(&mut context);
 
         {
-            let editable = context.globals.ensure::<Editable>();
+            let mut editable = context.globals.ensure::<Editable>();
             let mut editable = editable.write();
             if let Some((entries, interactible)) = editable.highlight.take() {
                 interactible.draw_wireframe(
@@ -556,7 +556,7 @@ macro_rules! editable_renderables {
                 $body
             }
             let entries = $crate::editor::features::editable::EditableEntry::end_region();
-            let editable = $context
+            let mut editable = $context
                 .globals
                 .ensure::<$crate::editor::features::editable::Editable>();
             let x = editable.read().pointer_x.get().0;

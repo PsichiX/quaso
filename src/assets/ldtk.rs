@@ -110,10 +110,11 @@ impl<Entity> Default for FilteredLdtkEntityExtractor<Entity> {
 impl<Entity> FilteredLdtkEntityExtractor<Entity> {
     pub fn with(
         mut self,
-        name: impl Fn(&EntityInstance) -> bool + 'static,
+        filter: impl Fn(&EntityInstance) -> bool + 'static,
         extractor: impl LdtkEntityExtractor<Entity = Entity> + 'static,
     ) -> Self {
-        self.extractors.push((Box::new(name), Box::new(extractor)));
+        self.extractors
+            .push((Box::new(filter), Box::new(extractor)));
         self
     }
 

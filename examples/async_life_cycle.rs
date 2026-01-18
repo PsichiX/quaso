@@ -9,8 +9,9 @@ use quaso::{
         async_wait_for_assets,
     },
     game::{GameInstance, GameState, GameStateChange},
+    gc::Gc,
     third_party::{
-        moirai::jobs::JobLocation,
+        moirai::job::JobLocation,
         raui_core::{
             layout::CoordsMappingScaling,
             widget::{
@@ -20,7 +21,6 @@ use quaso::{
             },
         },
         raui_immediate_widgets::core::text_box,
-        send_wrapper::SendWrapper,
         spitfire_draw::{
             sprite::{Sprite, SpriteTexture},
             utils::{Drawable, TextureRef},
@@ -35,7 +35,6 @@ use quaso::{
         vek::Vec2,
         windowing::event::VirtualKeyCode,
     },
-    value::Val,
 };
 use std::{error::Error, pin::Pin};
 
@@ -112,23 +111,20 @@ impl GameState for Preloader {
 }
 
 struct State {
-    // Val is a thread-safe mutable owned value container that can be shared
-    // between async tasks. We wrap Sprite and SpriteFrameAnimation in SendWrapper
-    // because they do not implement Send+Sync traits by default and we need to
-    // mark them as safe to be used only on the origin thread - this works because
-    // coroutines and async life-cycle futures run only on main thread.
-    ferris: Val<SendWrapper<Sprite>>,
-    ferris_anim: Val<SendWrapper<SpriteFrameAnimation>>,
-    movement: Val<CardinalInputCombinator>,
+    // Gc is a thread-safe mutable owned value container that can be shared
+    // between async tasks and threads in general.
+    ferris: Gc<Sprite>,
+    ferris_anim: Gc<SpriteFrameAnimation>,
+    movement: Gc<CardinalInputCombinator>,
     exit: InputActionRef,
 }
 
 impl Default for State {
     fn default() -> Self {
         Self {
-            ferris: Val::new(SendWrapper::new(Default::default())),
-            ferris_anim: Val::new(SendWrapper::new(Default::default())),
-            movement: Val::new(Default::default()),
+            ferris: Gc::new(Default::default()),
+            ferris_anim: Gc::new(Default::default()),
+            movement: Gc::new(Default::default()),
             exit: Default::default(),
         }
     }
@@ -136,23 +132,19 @@ impl Default for State {
 
 impl GameState for State {
     fn enter(&mut self, context: GameContext) {
-        *self.ferris.write() = SendWrapper::new(
-            Sprite::single(SpriteTexture {
-                sampler: "u_image".into(),
-                texture: TextureRef::name(""),
-                filtering: GlowTextureFiltering::Linear,
-            })
-            .pivot(0.5.into()),
-        );
+        *self.ferris.write() = Sprite::single(SpriteTexture {
+            sampler: "u_image".into(),
+            texture: TextureRef::name(""),
+            filtering: GlowTextureFiltering::Linear,
+        })
+        .pivot(0.5.into());
 
-        *self.ferris_anim.write() = SendWrapper::new(
-            context
-                .assets
-                .ensure("animtexture://ferris-bongo.gif")
-                .unwrap()
-                .access::<&AnimTextureAsset>(context.assets)
-                .build_animation(TextureRef::name("ferris-bongo.gif")),
-        );
+        *self.ferris_anim.write() = context
+            .assets
+            .ensure("animtexture://ferris-bongo.gif")
+            .unwrap()
+            .access::<&AnimTextureAsset>(context.assets)
+            .build_animation(TextureRef::name("ferris-bongo.gif"));
         self.ferris_anim.write().animation.speed = 0.5;
         self.ferris_anim.write().animation.looping = true;
         self.ferris_anim.write().animation.play();
@@ -193,12 +185,12 @@ impl GameState for State {
                 ),
         );
 
-        // To be able to access state data from async tasks, we need to create
-        // pointers to values containers - pointers are special async-safe
-        // lazily accessed references that can be sent between tasks.
-        let ferris = self.ferris.pointer();
-        let ferris_anim = self.ferris_anim.pointer();
-        let movement = self.movement.pointer();
+        // To be able to access state data from async tasks, we need to
+        // reference values containers - GC is async-safe lazily accessed data
+        // sent between tasks.
+        let mut ferris = self.ferris.reference();
+        let mut ferris_anim = self.ferris_anim.reference();
+        let movement = self.movement.reference();
         let exit = self.exit.clone();
 
         // We spawn state heartbeat-bound async tasks into various job queues.
@@ -228,7 +220,7 @@ impl GameState for State {
             }),
         );
 
-        let ferris = self.ferris.pointer();
+        let ferris = self.ferris.reference();
         context.draw_queue.spawn(
             JobLocation::Local,
             async_heartbeat_bound([context.state_heartbeat.clone()], async move {

@@ -1,4 +1,5 @@
 pub mod anim_texture;
+pub mod atlas_texture;
 pub mod font;
 pub mod gltf;
 pub mod ldtk;
@@ -8,7 +9,8 @@ pub mod spine;
 pub mod texture;
 
 use crate::assets::{
-    anim_texture::make_anim_texture_asset_protocol, font::FontAssetProtocol,
+    anim_texture::make_anim_texture_asset_protocol,
+    atlas_texture::make_atlas_texture_asset_protocol, font::FontAssetProtocol,
     gltf::make_gltf_asset_protocol, ldtk::LdtkAssetProtocol, shader::ShaderAssetProtocol,
     sound::SoundAssetProtocol, spine::SpineAssetProtocol, texture::TextureAssetProtocol,
 };
@@ -51,6 +53,7 @@ pub fn make_database(fetch: impl AssetFetch) -> AssetDatabase {
         .with_protocol(SpineAssetProtocol)
         .with_protocol(LdtkAssetProtocol)
         .with_protocol(make_gltf_asset_protocol())
+        .with_protocol(make_atlas_texture_asset_protocol())
         .with_fetch(fetch)
 }
 
@@ -88,6 +91,21 @@ pub fn make_throttled_directory_database(
     )))
 }
 
+pub fn make_replacement_package_filter(
+    items: &[(&str, Option<&str>)],
+) -> impl Fn(&Path) -> Option<String> {
+    move |path| {
+        let name = path.file_name()?.to_string_lossy().to_string();
+        for (subextension, replacement) in items {
+            if name.contains(subextension) {
+                let replacement = replacement.as_deref()?;
+                return Some(name.replace(subextension, replacement));
+            }
+        }
+        Some(name)
+    }
+}
+
 #[derive(Debug, Default, Serialize, Deserialize)]
 struct AssetPackageRegistry {
     mappings: HashMap<String, Range<usize>>,
@@ -102,7 +120,7 @@ pub struct AssetPackage {
 impl AssetPackage {
     pub fn from_directory(directory: impl AsRef<Path>) -> Result<Self, Box<dyn Error>> {
         Self::from_directory_filtered(directory, |path| {
-            Some(path.file_name().unwrap().to_str().unwrap().to_owned())
+            Some(path.file_name()?.to_string_lossy().to_string())
         })
     }
 
