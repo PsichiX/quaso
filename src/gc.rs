@@ -34,6 +34,13 @@ impl<T> Gc<T> {
         })
     }
 
+    pub fn consume(self) -> Result<T, Self> {
+        match self.0.consume() {
+            Ok(value) => Ok(value),
+            Err(managed) => Err(Self(managed)),
+        }
+    }
+
     pub fn reference(&self) -> Self {
         Self(self.0.reference())
     }
@@ -103,8 +110,23 @@ impl DynGc {
         })
     }
 
+    pub fn consume<T>(self) -> Result<T, Self> {
+        match self.0.consume::<T>() {
+            Ok(value) => Ok(value),
+            Err(managed) => Err(Self(managed)),
+        }
+    }
+
     pub fn reference(&self) -> Self {
         Self(self.0.reference())
+    }
+
+    pub fn read<T>(&self) -> Read<'_, T> {
+        self.0.read::<false, T>()
+    }
+
+    pub fn write<T>(&mut self) -> Write<'_, T> {
+        self.0.write::<false, T>()
     }
 
     pub fn set<const LOCKING: bool, T>(&mut self, value: T) {
