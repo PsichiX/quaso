@@ -2,7 +2,7 @@ use quaso::{
     context::GameContext,
     game::GameObject,
     third_party::{
-        rand::{Rng, rng},
+        rand::{RngExt, rng},
         spitfire_draw::{
             particles::{
                 ParticleEmitter, ParticleInstance, ParticleSystem, ParticleSystemProcessor,

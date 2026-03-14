@@ -3,7 +3,7 @@ members = ["templates/*"]
 
 [package]
 name = "quaso"
-version = "0.54.1"
+version = "0.55.0"
 edition = "2024"
 authors = ["Patryk 'PsichiX' Budzynski <psichix@gmail.com>"]
 description = "Toolset for making Micro Games quickly"
@@ -46,6 +46,11 @@ moirai = "0.8"
 keket = "0.20"
 nodio = "0.5"
 emergent = "1.7"
+tehuti = "0.19"
+tehuti-client-server = "0.19"
+tehuti-timeline = "0.19"
+tehuti-socket = "0.19"
+tehuti-diagnostics = "0.19"
 typid = "1"
 image = { version = "0.25", default-features = false, features = [
     "png",
@@ -57,25 +62,27 @@ fontdue = "0.9"
 vek = "0.17"
 serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1" }
-toml = "0.9"
+toml = "1.0"
 noise = "0.9"
-rand = "0.9"
-kira = "0.11"
+rand = "0.10"
+kira = "0.12"
 rstar = "0.12"
 gilrs = "0.11"
 anim8 = "1.4"
 rusty_spine = "0.8"
-zip = { version = "7.0", default-features = false, features = ["deflate"] }
+zip = { version = "8.0", default-features = false, features = ["deflate"] }
 tracing = "0.1"
 tracing-subscriber = "0.3"
 send_wrapper = "0.6"
 gltf = { version = "1.4", features = ["names", "extras", "utils"] }
 base64 = "0.22"
+flume = "0.12"
+paste = "1"
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 winit = "0.28"
 instant = { version = "0.1", features = ["wasm-bindgen"] }
-getrandom = { version = "0.3", features = ["wasm_js"] }
+getrandom = { version = "0.4", features = ["wasm_js"] }
 wasm-bindgen = "0.2"
 web-sys = { version = "0.3", features = ["Window", "Navigator"] }
 js-sys = "0.3"
@@ -83,4 +90,4 @@ tracing-web = "0.1"
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 glutin = "0.28"
-getrandom = { version = "0.3" }
+getrandom = { version = "0.4" }

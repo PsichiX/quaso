@@ -15,6 +15,19 @@ build-wasm:
 run NAME="top-down" PLATFORM="desktop":
     cd ./templates/{{NAME}} && just run {{PLATFORM}}
 
+build-examples:
+    cargo build --examples
+
+run-example NAME:
+  #!/usr/bin/env bash
+  BINARY=$(find ./target/debug/examples -type f -executable -name "{{NAME}}*" | head -n 1)
+  if [ -z "$BINARY" ]; then
+    echo "No binary found matching: {{NAME}}*"
+    exit 1
+  fi
+  echo "Running binary: $BINARY"
+  "$BINARY"
+
 clippy:
     cargo clippy
 

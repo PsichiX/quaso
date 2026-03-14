@@ -18,6 +18,7 @@ use std::{
     error::Error,
     io::{Cursor, Read},
 };
+use vek::{Rect, Vec2};
 use zip::ZipArchive;
 
 #[derive(Debug)]
@@ -40,36 +41,244 @@ impl LdtkAsset {
         builder.build(&self.world)
     }
 
-    pub fn extract_entities<R>(
-        &self,
-        extractor: &dyn LdtkEntityExtractor<Entity = R>,
-    ) -> impl Iterator<Item = R> {
-        self.world.levels.iter().flat_map(move |level| {
-            level
-                .layer_instances
-                .iter()
-                .flatten()
-                .flat_map(move |layer| {
-                    layer
-                        .entity_instances
-                        .iter()
-                        .filter_map(|entity| extractor.extract(entity))
-                })
-        })
-    }
-
-    pub fn entities(&self) -> impl Iterator<Item = (&Level, &LayerInstance, &EntityInstance)> {
+    pub fn layers(&self) -> impl Iterator<Item = (&Level, &LayerInstance)> {
         self.world.levels.iter().flat_map(|level| {
             level
                 .layer_instances
                 .iter()
                 .flatten()
-                .flat_map(move |layer| {
-                    layer
-                        .entity_instances
-                        .iter()
-                        .map(move |entity| (level, layer, entity))
-                })
+                .map(move |layer| (level, layer))
+        })
+    }
+
+    pub fn entities(
+        &self,
+        only_levels: Option<&[&str]>,
+        only_layers: Option<&[&str]>,
+    ) -> impl Iterator<Item = (&Level, &LayerInstance, &EntityInstance)> {
+        self.world
+            .levels
+            .iter()
+            .filter(move |level| {
+                only_levels
+                    .as_ref()
+                    .is_none_or(|only_levels| only_levels.contains(&level.identifier.as_str()))
+            })
+            .flat_map(move |level| {
+                level
+                    .layer_instances
+                    .iter()
+                    .flatten()
+                    .filter(move |layer| {
+                        only_layers.as_ref().is_none_or(|only_layers| {
+                            only_layers.contains(&layer.identifier.as_str())
+                        })
+                    })
+                    .flat_map(move |layer| {
+                        layer
+                            .entity_instances
+                            .iter()
+                            .map(move |entity| (level, layer, entity))
+                    })
+            })
+    }
+
+    pub fn extract_entities<R>(
+        &self,
+        only_levels: Option<&[&str]>,
+        only_layers: Option<&[&str]>,
+        extractor: &dyn LdtkEntityExtractor<Entity = R>,
+    ) -> impl Iterator<Item = R> {
+        self.entities(only_levels, only_layers)
+            .filter_map(move |(_, _, entity)| extractor.extract(entity))
+    }
+
+    #[allow(clippy::type_complexity)]
+    pub fn tiles(
+        &self,
+        fetch_value_ids: bool,
+        only_levels: Option<&[&str]>,
+        only_layers: Option<&[&str]>,
+    ) -> impl Iterator<
+        Item = (
+            &Level,
+            &LayerInstance,
+            Vec2<i64>,
+            Rect<i64, i64>,
+            i64,
+            Option<&str>,
+        ),
+    > {
+        self.world
+            .levels
+            .iter()
+            .filter(move |level| {
+                only_levels
+                    .as_ref()
+                    .is_none_or(|only_levels| only_levels.contains(&level.identifier.as_str()))
+            })
+            .flat_map(move |level| {
+                level
+                    .layer_instances
+                    .iter()
+                    .flatten()
+                    .filter(move |layer| {
+                        only_layers.as_ref().is_none_or(|only_layers| {
+                            only_layers.contains(&layer.identifier.as_str())
+                        })
+                    })
+                    .flat_map(move |layer| {
+                        let layer_definition = fetch_value_ids
+                            .then(|| {
+                                self.world
+                                    .defs
+                                    .layers
+                                    .iter()
+                                    .find(|definition| definition.uid == layer.layer_def_uid)
+                            })
+                            .flatten();
+                        layer
+                            .int_grid_csv
+                            .iter()
+                            .enumerate()
+                            .map(move |(index, value)| {
+                                let index = index as i64;
+                                let value_id = layer_definition.and_then(|layer_definition| {
+                                    layer_definition
+                                        .int_grid_values
+                                        .iter()
+                                        .find(|v| v.value == *value)
+                                        .and_then(|v| v.identifier.as_deref())
+                                });
+                                let col = index % layer.c_wid;
+                                let row = index / layer.c_wid;
+                                let rectangle = Rect {
+                                    x: (col * layer.grid_size + layer.px_total_offset_x),
+                                    y: (row * layer.grid_size + layer.px_total_offset_y),
+                                    w: layer.grid_size,
+                                    h: layer.grid_size,
+                                };
+                                (
+                                    level,
+                                    layer,
+                                    Vec2::new(col, row),
+                                    rectangle,
+                                    *value,
+                                    value_id,
+                                )
+                            })
+                    })
+            })
+    }
+
+    pub fn extract_tiles<T>(
+        &self,
+        fetch_value_ids: bool,
+        only_levels: Option<&[&str]>,
+        only_layers: Option<&[&str]>,
+        extractor: &dyn LdtkTileExtractor<Tile = T>,
+    ) -> impl Iterator<Item = T> {
+        self.tiles(fetch_value_ids, only_levels, only_layers)
+            .filter_map(
+                move |(level, layer, grid_position, rectangle, value, value_id)| {
+                    extractor.extract(level, layer, grid_position, rectangle, value, value_id)
+                },
+            )
+    }
+}
+
+pub trait LdtkTileExtractor {
+    type Tile;
+
+    fn extract(
+        &self,
+        level: &Level,
+        layer: &LayerInstance,
+        grid_position: Vec2<i64>,
+        rectangle: Rect<i64, i64>,
+        value: i64,
+        value_id: Option<&str>,
+    ) -> Option<Self::Tile>;
+}
+
+impl<F, R> LdtkTileExtractor for F
+where
+    F: Fn(&Level, &LayerInstance, Vec2<i64>, Rect<i64, i64>, i64, Option<&str>) -> Option<R>,
+{
+    type Tile = R;
+
+    fn extract(
+        &self,
+        level: &Level,
+        layer: &LayerInstance,
+        grid_position: Vec2<i64>,
+        rectangle: Rect<i64, i64>,
+        value: i64,
+        value_id: Option<&str>,
+    ) -> Option<Self::Tile> {
+        self(level, layer, grid_position, rectangle, value, value_id)
+    }
+}
+
+pub struct FilteredLdtkTileExtractor<Tile> {
+    #[allow(clippy::type_complexity)]
+    pub extractors: Vec<(
+        Box<dyn Fn(&Level, &LayerInstance, Vec2<i64>, Rect<i64, i64>, i64, Option<&str>) -> bool>,
+        Box<dyn LdtkTileExtractor<Tile = Tile>>,
+    )>,
+}
+
+impl<Tile> Default for FilteredLdtkTileExtractor<Tile> {
+    fn default() -> Self {
+        Self {
+            extractors: Default::default(),
+        }
+    }
+}
+
+impl<Tile> FilteredLdtkTileExtractor<Tile> {
+    pub fn with(
+        mut self,
+        filter: impl Fn(&Level, &LayerInstance, Vec2<i64>, Rect<i64, i64>, i64, Option<&str>) -> bool
+        + 'static,
+        extractor: impl LdtkTileExtractor<Tile = Tile> + 'static,
+    ) -> Self {
+        self.extractors
+            .push((Box::new(filter), Box::new(extractor)));
+        self
+    }
+
+    pub fn by_layer_name(
+        mut self,
+        layer_name: &'static str,
+        extractor: impl LdtkTileExtractor<Tile = Tile> + 'static,
+    ) -> Self {
+        self.extractors.push((
+            Box::new(move |_, layer, _, _, _, _| layer.identifier == layer_name),
+            Box::new(extractor),
+        ));
+        self
+    }
+}
+
+impl<Tile> LdtkTileExtractor for FilteredLdtkTileExtractor<Tile> {
+    type Tile = Tile;
+
+    fn extract(
+        &self,
+        level: &Level,
+        layer: &LayerInstance,
+        grid_position: Vec2<i64>,
+        rectangle: Rect<i64, i64>,
+        value: i64,
+        value_id: Option<&str>,
+    ) -> Option<Self::Tile> {
+        self.extractors.iter().find_map(|(filter, extractor)| {
+            if filter(level, layer, grid_position, rectangle, value, value_id) {
+                extractor.extract(level, layer, grid_position, rectangle, value, value_id)
+            } else {
+                None
+            }
         })
     }
 }

@@ -1,6 +1,6 @@
 pub mod states;
 
-use self::states::gameplay::Gameplay;
+use crate::game::states::gameplay::Gameplay;
 use quaso::{GameLauncher, assets::make_memory_database, config::Config, game::GameInstance};
 
 pub fn main() {

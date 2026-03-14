@@ -7,7 +7,7 @@ use quaso::{
     game::{GameInstance, GameState, GameStateChange},
     gc::Gc,
     third_party::{
-        rand::{Rng, rng},
+        rand::{RngExt, rng},
         spitfire_draw::{
             sprite::{Sprite, SpriteTexture},
             utils::{Drawable, TextureRef},

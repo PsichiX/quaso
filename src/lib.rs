@@ -3,14 +3,13 @@ pub mod third_party {
     pub use anput;
     pub use base64;
     pub use emergent;
+    pub use flume;
     pub use fontdue;
     pub use getrandom;
     pub use gilrs;
     #[cfg(not(target_arch = "wasm32"))]
     pub use glutin as windowing;
     pub use image;
-    #[cfg(target_arch = "wasm32")]
-    pub use instant::{Duration, Instant};
     pub use intuicio_backend_vm;
     pub use intuicio_core;
     pub use intuicio_data;
@@ -22,6 +21,7 @@ pub mod third_party {
     pub use moirai;
     pub use nodio;
     pub use noise;
+    pub use paste;
     pub use rand;
     pub use randscape;
     pub use raui_core;
@@ -38,8 +38,11 @@ pub mod third_party {
     pub use spitfire_glow;
     pub use spitfire_gui;
     pub use spitfire_input;
-    #[cfg(not(target_arch = "wasm32"))]
-    pub use std::time::{Duration, Instant};
+    pub use tehuti;
+    pub use tehuti_client_server;
+    pub use tehuti_diagnostics;
+    pub use tehuti_socket;
+    pub use tehuti_timeline;
     pub use toml;
     pub use tracing;
     pub use tracing_subscriber;
@@ -50,6 +53,13 @@ pub mod third_party {
     #[cfg(target_arch = "wasm32")]
     pub use winit as windowing;
     pub use zip;
+
+    pub mod time {
+        #[cfg(target_arch = "wasm32")]
+        pub use instant::*;
+        #[cfg(not(target_arch = "wasm32"))]
+        pub use std::time::*;
+    }
 }
 
 pub mod animation;
@@ -66,6 +76,7 @@ pub mod gamepad;
 pub mod gc;
 pub mod interactible;
 pub mod map;
+pub mod multiplayer;
 pub mod scripting;
 pub mod tag;
 pub mod transformed;

@@ -15,7 +15,11 @@ use crate::assets::{
     sound::SoundAssetProtocol, spine::SpineAssetProtocol, texture::TextureAssetProtocol,
 };
 use keket::{
-    database::{AssetDatabase, path::AssetPath},
+    database::{
+        AssetDatabase,
+        handle::AssetHandle,
+        path::{AssetPath, AssetPathStatic},
+    },
     fetch::{
         AssetFetch,
         container::{ContainerAssetFetch, ContainerPartialFetch},
@@ -38,6 +42,13 @@ pub fn name_from_path<'a>(path: &'a AssetPath<'a>) -> &'a str {
         .find(|(key, _)| *key == "as")
         .map(|(_, value)| value)
         .unwrap_or(path.path())
+}
+
+pub fn find_asset_by_name(database: &AssetDatabase, name: &str) -> Option<AssetHandle> {
+    database
+        .storage
+        .find_with::<true, AssetPathStatic>(|path| name_from_path(path) == name)
+        .map(AssetHandle::new)
 }
 
 pub fn make_database(fetch: impl AssetFetch) -> AssetDatabase {

@@ -5,7 +5,7 @@ use quaso::{
     gc::Gc,
     third_party::{
         moirai::coroutine::with_all,
-        rand::{Rng, rng},
+        rand::{RngExt, rng},
         spitfire_draw::{
             sprite::{Sprite, SpriteTexture},
             utils::{Drawable, ShaderRef, TextureRef},

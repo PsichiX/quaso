@@ -1,6 +1,7 @@
 .vscode/
 target/
 dist/
+logs/
 **/*.rs.bk
 Cargo.lock
 *.sh

@@ -7,7 +7,7 @@ pub mod torch;
 pub mod ui;
 pub mod utils;
 
-use self::states::preloader::Preloader;
+use crate::game::states::preloader::Preloader;
 use quaso::{GameLauncher, assets::make_memory_database, config::Config, game::GameInstance};
 
 pub fn main() {

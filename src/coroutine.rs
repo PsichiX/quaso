@@ -53,7 +53,7 @@ pub async fn async_game_context<'a>() -> Option<GameContext<'a>> {
     let context = meta::<GameContext>(CONTEXT_META).await?;
     let context = unsafe { context.as_mut_ptr() }?;
     let context = unsafe { context.as_mut() }?;
-    Some(GameContext::fork(context))
+    Some(unsafe { context.fork() })
 }
 
 pub async fn async_delta_time() -> f32 {

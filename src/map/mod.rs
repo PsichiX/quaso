@@ -40,7 +40,10 @@ impl LdtkMapColliderResult {
 }
 
 pub struct LdtkMapBuilder<'a> {
+    pub only_levels: Vec<String>,
+    pub only_layers: Vec<String>,
     pub pixel_world_scale: f32,
+    pub color_shader: Option<ShaderRef>,
     pub image_shader: Option<ShaderRef>,
     pub sampler: Cow<'static, str>,
     pub texture_filtering: GlowTextureFiltering,
@@ -53,7 +56,10 @@ pub struct LdtkMapBuilder<'a> {
 impl Default for LdtkMapBuilder<'_> {
     fn default() -> Self {
         Self {
+            only_levels: Default::default(),
+            only_layers: Default::default(),
             pixel_world_scale: 1.0,
+            color_shader: None,
             image_shader: None,
             sampler: "u_image".into(),
             texture_filtering: Default::default(),
@@ -64,8 +70,23 @@ impl Default for LdtkMapBuilder<'_> {
 }
 
 impl<'a> LdtkMapBuilder<'a> {
+    pub fn only_levels(mut self, levels: impl IntoIterator<Item = String>) -> Self {
+        self.only_levels = levels.into_iter().collect();
+        self
+    }
+
+    pub fn only_layers(mut self, layers: impl IntoIterator<Item = String>) -> Self {
+        self.only_layers = layers.into_iter().collect();
+        self
+    }
+
     pub fn pixel_world_scale(mut self, scale: f32) -> Self {
         self.pixel_world_scale = scale;
+        self
+    }
+
+    pub fn color_shader(mut self, shader: ShaderRef) -> Self {
+        self.color_shader = Some(shader);
         self
     }
 
@@ -96,6 +117,9 @@ impl<'a> LdtkMapBuilder<'a> {
         let levels = ldtk
             .levels
             .iter()
+            .filter(|level| {
+                self.only_levels.is_empty() || self.only_levels.contains(&level.identifier)
+            })
             .map(|level| {
                 let layers = level
                     .layer_instances
@@ -103,73 +127,141 @@ impl<'a> LdtkMapBuilder<'a> {
                     .into_iter()
                     .flatten()
                     .rev()
+                    .filter(|layer| {
+                        self.only_layers.is_empty() || self.only_layers.contains(&layer.identifier)
+                    })
                     .filter_map(|layer| {
-                        let tileset_uid = layer.tileset_def_uid?;
-                        if layer.auto_layer_tiles.is_empty() {
-                            return None;
-                        }
-                        let tileset_definition = ldtk
-                            .defs
-                            .tilesets
-                            .iter()
-                            .find(|definition| definition.uid == tileset_uid)
-                            .unwrap();
-                        let texture_reference = tileset_definition.rel_path.as_deref()?;
-                        let texture_reference = self
-                            .tileset_reference_extractor
-                            .as_ref()
-                            .map(|extractor| extractor(texture_reference))
-                            .unwrap_or_else(|| texture_reference.to_owned());
-                        let texture_reference = TextureRef::name(texture_reference);
-                        let tiles = layer
-                            .auto_layer_tiles
-                            .iter()
-                            .map(|tile| MapTile {
-                                visible: true,
-                                rectangle: Rect {
-                                    x: tile.px[0] as f32 * self.pixel_world_scale,
-                                    y: tile.px[1] as f32 * self.pixel_world_scale,
-                                    w: layer.grid_size as f32 * self.pixel_world_scale,
-                                    h: layer.grid_size as f32 * self.pixel_world_scale,
+                        // TODO: add support for non-auto-tile tiles.
+                        if let Some(tileset_uid) = layer.tileset_def_uid {
+                            if layer.auto_layer_tiles.is_empty() {
+                                return None;
+                            }
+                            let tileset_definition = ldtk
+                                .defs
+                                .tilesets
+                                .iter()
+                                .find(|definition| definition.uid == tileset_uid)
+                                .unwrap();
+                            let texture_reference = tileset_definition.rel_path.as_deref()?;
+                            let texture_reference = self
+                                .tileset_reference_extractor
+                                .as_ref()
+                                .map(|extractor| extractor(texture_reference))
+                                .unwrap_or_else(|| texture_reference.to_owned());
+                            let texture_reference = TextureRef::name(texture_reference);
+                            let tiles = layer
+                                .auto_layer_tiles
+                                .iter()
+                                .map(|tile| MapTile {
+                                    visible: true,
+                                    rectangle: Rect {
+                                        x: tile.px[0] as f32 * self.pixel_world_scale,
+                                        y: tile.px[1] as f32 * self.pixel_world_scale,
+                                        w: layer.grid_size as f32 * self.pixel_world_scale,
+                                        h: layer.grid_size as f32 * self.pixel_world_scale,
+                                    },
+                                    region: Rect {
+                                        x: tile.src[0] as f32 / tileset_definition.px_wid as f32,
+                                        y: tile.src[1] as f32 / tileset_definition.px_hei as f32,
+                                        w: tileset_definition.tile_grid_size as f32
+                                            / tileset_definition.px_wid as f32,
+                                        h: tileset_definition.tile_grid_size as f32
+                                            / tileset_definition.px_hei as f32,
+                                    },
+                                    page: 0.0,
+                                    color: Rgba::white(),
+                                })
+                                .collect::<Vec<_>>();
+                            let visibility_region = tiles
+                                .iter()
+                                .map(|tile| tile.rectangle)
+                                .reduce(|current, item| current.union(item));
+                            Some(MapLayer {
+                                visible: layer.visible,
+                                visibility_region,
+                                shader: self.image_shader.clone(),
+                                textures: vec![SpriteTexture {
+                                    sampler: self.sampler.clone(),
+                                    texture: texture_reference,
+                                    filtering: self.texture_filtering,
+                                }],
+                                uniforms: Default::default(),
+                                blending: None,
+                                transform: Transform {
+                                    position: Vec3::new(
+                                        layer.px_total_offset_x as f32 * self.pixel_world_scale,
+                                        layer.px_total_offset_y as f32 * self.pixel_world_scale,
+                                        0.0,
+                                    ),
+                                    orientation: Quaternion::identity(),
+                                    scale: Vec3::one(),
                                 },
-                                region: Rect {
-                                    x: tile.src[0] as f32 / tileset_definition.px_wid as f32,
-                                    y: tile.src[1] as f32 / tileset_definition.px_hei as f32,
-                                    w: tileset_definition.tile_grid_size as f32
-                                        / tileset_definition.px_wid as f32,
-                                    h: tileset_definition.tile_grid_size as f32
-                                        / tileset_definition.px_hei as f32,
-                                },
-                                page: 0.0,
-                                color: Rgba::white(),
+                                tiles,
                             })
-                            .collect::<Vec<_>>();
-                        let visibility_region = tiles
-                            .iter()
-                            .map(|tile| tile.rectangle)
-                            .reduce(|current, item| current.union(item));
-                        Some(MapLayer {
-                            visible: layer.visible,
-                            visibility_region,
-                            shader: self.image_shader.clone(),
-                            textures: vec![SpriteTexture {
-                                sampler: self.sampler.clone(),
-                                texture: texture_reference,
-                                filtering: self.texture_filtering,
-                            }],
-                            uniforms: Default::default(),
-                            blending: None,
-                            transform: Transform {
-                                position: Vec3::new(
-                                    layer.px_total_offset_x as f32 * self.pixel_world_scale,
-                                    layer.px_total_offset_y as f32 * self.pixel_world_scale,
-                                    0.0,
-                                ),
-                                orientation: Quaternion::identity(),
-                                scale: Vec3::one(),
-                            },
-                            tiles,
-                        })
+                        } else {
+                            if layer.int_grid_csv.is_empty() {
+                                return None;
+                            }
+                            let layer_definition = ldtk
+                                .defs
+                                .layers
+                                .iter()
+                                .find(|definition| definition.uid == layer.layer_def_uid)
+                                .unwrap();
+                            let tiles = layer
+                                .int_grid_csv
+                                .iter()
+                                .copied()
+                                .enumerate()
+                                .filter_map(|(index, value)| {
+                                    let value_def = layer_definition
+                                        .int_grid_values
+                                        .iter()
+                                        .find(|v| v.value == value)?;
+                                    let col = index as i64 % layer.c_wid;
+                                    let row = index as i64 / layer.c_wid;
+                                    let color = Self::parse_color(&value_def.color);
+                                    Some(MapTile {
+                                        visible: true,
+                                        rectangle: Rect {
+                                            x: col as f32
+                                                * layer.grid_size as f32
+                                                * self.pixel_world_scale,
+                                            y: row as f32
+                                                * layer.grid_size as f32
+                                                * self.pixel_world_scale,
+                                            w: layer.grid_size as f32 * self.pixel_world_scale,
+                                            h: layer.grid_size as f32 * self.pixel_world_scale,
+                                        },
+                                        region: Default::default(),
+                                        page: 0.0,
+                                        color,
+                                    })
+                                })
+                                .collect::<Vec<_>>();
+                            let visibility_region = tiles
+                                .iter()
+                                .map(|tile| tile.rectangle)
+                                .reduce(|current, item| current.union(item));
+                            Some(MapLayer {
+                                visible: layer.visible,
+                                visibility_region,
+                                shader: self.color_shader.clone(),
+                                textures: Default::default(),
+                                uniforms: Default::default(),
+                                blending: None,
+                                transform: Transform {
+                                    position: Vec3::new(
+                                        layer.px_total_offset_x as f32 * self.pixel_world_scale,
+                                        layer.px_total_offset_y as f32 * self.pixel_world_scale,
+                                        0.0,
+                                    ),
+                                    orientation: Quaternion::identity(),
+                                    scale: Vec3::one(),
+                                },
+                                tiles,
+                            })
+                        }
                     })
                     .collect();
                 let mut colliders = vec![];
@@ -238,6 +330,24 @@ impl<'a> LdtkMapBuilder<'a> {
             transform: Default::default(),
         }
     }
+
+    fn parse_color(value: &str) -> Rgba<f32> {
+        let value = value.trim_start_matches('#');
+        let r = u8::from_str_radix(&value[0..2], 16).unwrap_or_default();
+        let g = u8::from_str_radix(&value[2..4], 16).unwrap_or_default();
+        let b = u8::from_str_radix(&value[4..6], 16).unwrap_or_default();
+        let a = if value.len() >= 8 {
+            u8::from_str_radix(&value[6..8], 16).unwrap_or_default()
+        } else {
+            255
+        };
+        Rgba::new(
+            r as f32 / 255.0,
+            g as f32 / 255.0,
+            b as f32 / 255.0,
+            a as f32 / 255.0,
+        )
+    }
 }
 
 #[derive(Debug, Default, Clone)]
@@ -291,6 +401,33 @@ impl Map {
         self.levels
             .iter()
             .any(|level| level.collides_with_point(point, mask))
+    }
+
+    pub fn bounding_box(&self) -> Option<Rect<f32, f32>> {
+        self.levels
+            .iter()
+            .fold(None, |current: Option<Rect<f32, f32>>, level| {
+                if let Some(bbox) = level.bounding_box() {
+                    let matrix = transform_to_matrix(self.transform);
+                    let vertices = [
+                        matrix.mul_point(Vec2::new(bbox.x, bbox.y)),
+                        matrix.mul_point(Vec2::new(bbox.x + bbox.w, bbox.y)),
+                        matrix.mul_point(Vec2::new(bbox.x, bbox.y + bbox.h)),
+                        matrix.mul_point(Vec2::new(bbox.x + bbox.w, bbox.y + bbox.h)),
+                    ];
+                    let bbox = Rect::new(vertices[0].x, vertices[0].y, 0.0, 0.0)
+                        .expanded_to_contain_point(vertices[1])
+                        .expanded_to_contain_point(vertices[2])
+                        .expanded_to_contain_point(vertices[3]);
+                    if let Some(current) = current {
+                        Some(current.union(bbox))
+                    } else {
+                        Some(bbox)
+                    }
+                } else {
+                    current
+                }
+            })
     }
 
     pub fn draw<'a>(&'a self) -> MapRenderer<'a> {
@@ -377,6 +514,33 @@ impl MapLevel {
                 .colliders
                 .iter()
                 .any(|collider| collider.collides_with_point(point, mask))
+    }
+
+    pub fn bounding_box(&self) -> Option<Rect<f32, f32>> {
+        self.layers
+            .iter()
+            .fold(None, |current: Option<Rect<f32, f32>>, layer| {
+                if let Some(bbox) = layer.bounding_box() {
+                    let matrix = transform_to_matrix(self.transform);
+                    let vertices = [
+                        matrix.mul_point(Vec2::new(bbox.x, bbox.y)),
+                        matrix.mul_point(Vec2::new(bbox.x + bbox.w, bbox.y)),
+                        matrix.mul_point(Vec2::new(bbox.x, bbox.y + bbox.h)),
+                        matrix.mul_point(Vec2::new(bbox.x + bbox.w, bbox.y + bbox.h)),
+                    ];
+                    let bbox = Rect::new(vertices[0].x, vertices[0].y, 0.0, 0.0)
+                        .expanded_to_contain_point(vertices[1])
+                        .expanded_to_contain_point(vertices[2])
+                        .expanded_to_contain_point(vertices[3]);
+                    if let Some(current) = current {
+                        Some(current.union(bbox))
+                    } else {
+                        Some(bbox)
+                    }
+                } else {
+                    current
+                }
+            })
     }
 }
 
@@ -473,6 +637,30 @@ impl MapLayer {
     pub fn tiles(mut self, tiles: impl IntoIterator<Item = MapTile>) -> Self {
         self.tiles.extend(tiles);
         self
+    }
+
+    pub fn bounding_box(&self) -> Option<Rect<f32, f32>> {
+        self.tiles
+            .iter()
+            .fold(None, |current: Option<Rect<f32, f32>>, tile| {
+                let bbox = tile.rectangle;
+                let matrix = transform_to_matrix(self.transform);
+                let vertices = [
+                    matrix.mul_point(Vec2::new(bbox.x, bbox.y)),
+                    matrix.mul_point(Vec2::new(bbox.x + bbox.w, bbox.y)),
+                    matrix.mul_point(Vec2::new(bbox.x, bbox.y + bbox.h)),
+                    matrix.mul_point(Vec2::new(bbox.x + bbox.w, bbox.y + bbox.h)),
+                ];
+                let bbox = Rect::new(vertices[0].x, vertices[0].y, 0.0, 0.0)
+                    .expanded_to_contain_point(vertices[1])
+                    .expanded_to_contain_point(vertices[2])
+                    .expanded_to_contain_point(vertices[3]);
+                if let Some(current) = current {
+                    Some(current.union(bbox))
+                } else {
+                    Some(bbox)
+                }
+            })
     }
 }
 

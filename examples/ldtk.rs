@@ -10,7 +10,7 @@ use quaso::{
     game::{GameInstance, GameState, GameStateChange},
     map::{LdtkMapBuilder, LdtkMapColliderResult, Map, ldtk::EntityInstance},
     third_party::{
-        rand::{Rng, rng},
+        rand::{RngExt, rng},
         spitfire_draw::{
             sprite::{Sprite, SpriteTexture},
             utils::{Drawable, ShaderRef, TextureRef},
@@ -145,7 +145,7 @@ impl GameState for State {
                 )
             },
         );
-        self.animals = asset.extract_entities(&extractor).collect();
+        self.animals = asset.extract_entities(None, None, &extractor).collect();
 
         // Setup inputs for moving the map.
         let move_left = InputActionRef::default();

@@ -21,7 +21,7 @@ use quaso::{
     gamepad::GamepadManager,
     third_party::{
         kira::sound::static_sound::StaticSoundHandle,
-        rand::{Rng, rng},
+        rand::{RngExt, rng},
         raui_core::{
             layout::CoordsMappingScaling,
             widget::{

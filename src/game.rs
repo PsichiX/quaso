@@ -9,8 +9,9 @@ use crate::{
     audio::Audio,
     context::{GameContext, GameSubsystems},
     gc::{DynGc, Gc},
+    multiplayer::{GameMultiplayer, GameMultiplayerChange, GameNetwork, NoMultiplayer},
     third_party::{
-        Duration, Instant,
+        time::{Duration, Instant},
         windowing::{
             event::{Event, WindowEvent},
             window::Window,
@@ -45,6 +46,7 @@ use std::{
     collections::BTreeMap,
     pin::Pin,
 };
+use tehuti::peer::{Peer, PeerId};
 #[cfg(feature = "editor")]
 use vek::{Rect, Vec2};
 
@@ -107,22 +109,51 @@ pub trait GameState {
     fn can_reentry_from_background(&self) -> bool {
         false
     }
+
+    fn multiplayer_peer_added(&mut self, context: GameContext, peer: Peer) {}
+
+    fn multiplayer_peer_removed(&mut self, context: GameContext, peer_id: PeerId) {}
+
+    fn custom_event(&mut self, context: GameContext, payload: &mut dyn Any) {}
 }
 
+#[macro_export]
+macro_rules! game_state_custom_event {
+    (@item ($self:expr, $context:expr, $payload:expr) => trait($trait:ident)) => {
+        if <Self as $trait>::is($payload) {
+            <Self as $trait>::custom_event($self, $context, $payload);
+            return;
+        }
+    };
+    (@item ($self:expr, $context:expr, $payload:expr) => fn($method:ident, $payload_type:ident)) => {
+        if let Some(payload) = $payload.downcast_mut::<$payload_type>() {
+            $self.$method($context, payload);
+            return;
+        }
+    };
+    ($(
+        $kind:ident ( $( $arg:tt ),* )
+    ),*) => {
+        fn custom_event(&mut self, context: GameContext, payload: &mut dyn Any) {
+            $(
+                $crate::game_state_custom_event!(
+                    @item (self, context, payload) => $kind ( $( $arg ),* )
+                );
+            )*
+        }
+    };
+}
+
+#[allow(unused_variables)]
 pub trait GameSubsystem {
-    #[allow(unused_variables)]
     fn update(&mut self, context: GameContext, delta_time: f32) {}
 
-    #[allow(unused_variables)]
     fn fixed_update(&mut self, context: GameContext, delta_time: f32) {}
 
-    #[allow(unused_variables)]
     fn draw(&mut self, context: GameContext) {}
 
-    #[allow(unused_variables)]
     fn draw_gui(&mut self, context: GameContext) {}
 
-    #[allow(unused_variables)]
     fn event(&mut self, globals: &mut GameGlobals, event: &Event<()>) {}
 
     fn as_any(&self) -> &dyn Any;
@@ -264,6 +295,10 @@ impl GameJobs {
     ) -> JobHandle<T> {
         self.jobs.spawn(options, job)
     }
+
+    pub fn jobs(&self) -> &Jobs {
+        &self.jobs
+    }
 }
 
 pub struct GameInstance {
@@ -288,6 +323,9 @@ pub struct GameInstance {
     subsystems: Vec<Box<dyn GameSubsystem>>,
     globals: GameGlobals,
     jobs: GameJobs,
+    network: GameNetwork,
+    multiplayer: Box<dyn GameMultiplayer>,
+    multiplayer_change: GameMultiplayerChange,
     next_frame_queue: JobQueue,
     update_queue: JobQueue,
     next_update_queue: JobQueue,
@@ -334,6 +372,9 @@ impl Default for GameInstance {
             ],
             globals: Default::default(),
             jobs: Default::default(),
+            network: Default::default(),
+            multiplayer: Box::new(NoMultiplayer),
+            multiplayer_change: Default::default(),
             next_frame_queue: Default::default(),
             update_queue: Default::default(),
             next_update_queue: Default::default(),
@@ -430,6 +471,11 @@ impl GameInstance {
         self
     }
 
+    pub fn with_network(mut self, network: GameNetwork) -> Self {
+        self.network = network;
+        self
+    }
+
     pub fn with_gamepads(mut self) -> Self {
         self.input = self.input.with_gamepads();
         self
@@ -473,10 +519,13 @@ impl GameInstance {
                             gui: &mut self.gui,
                             input: &mut self.input,
                             state_change: &mut self.state_change,
+                            multiplayer_change: &mut self.multiplayer_change,
                             assets: &mut self.assets,
                             audio: &mut self.audio,
                             globals: &mut self.globals,
                             jobs: Some(&self.jobs),
+                            network: &mut self.network,
+                            multiplayer: Some(&mut *self.multiplayer),
                             update_queue: &self.next_update_queue,
                             fixed_update_queue: &self.next_fixed_update_queue,
                             draw_queue: &self.next_draw_queue,
@@ -502,10 +551,13 @@ impl GameInstance {
                         gui: &mut self.gui,
                         input: &mut self.input,
                         state_change: &mut self.state_change,
+                        multiplayer_change: &mut self.multiplayer_change,
                         assets: &mut self.assets,
                         audio: &mut self.audio,
                         globals: &mut self.globals,
                         jobs: Some(&self.jobs),
+                        network: &mut self.network,
+                        multiplayer: Some(&mut *self.multiplayer),
                         update_queue: &self.next_update_queue,
                         fixed_update_queue: &self.next_fixed_update_queue,
                         draw_queue: &self.next_draw_queue,
@@ -528,10 +580,13 @@ impl GameInstance {
                         gui: &mut self.gui,
                         input: &mut self.input,
                         state_change: &mut self.state_change,
+                        multiplayer_change: &mut self.multiplayer_change,
                         assets: &mut self.assets,
                         audio: &mut self.audio,
                         globals: &mut self.globals,
                         jobs: Some(&self.jobs),
+                        network: &mut self.network,
+                        multiplayer: Some(&mut *self.multiplayer),
                         update_queue: &self.next_update_queue,
                         fixed_update_queue: &self.next_fixed_update_queue,
                         draw_queue: &self.next_draw_queue,
@@ -563,10 +618,13 @@ impl GameInstance {
                             gui: &mut self.gui,
                             input: &mut self.input,
                             state_change: &mut self.state_change,
+                            multiplayer_change: &mut self.multiplayer_change,
                             assets: &mut self.assets,
                             audio: &mut self.audio,
                             globals: &mut self.globals,
                             jobs: Some(&self.jobs),
+                            network: &mut self.network,
+                            multiplayer: Some(&mut *self.multiplayer),
                             update_queue: &self.next_update_queue,
                             fixed_update_queue: &self.next_fixed_update_queue,
                             draw_queue: &self.next_draw_queue,
@@ -589,10 +647,13 @@ impl GameInstance {
                         gui: &mut self.gui,
                         input: &mut self.input,
                         state_change: &mut self.state_change,
+                        multiplayer_change: &mut self.multiplayer_change,
                         assets: &mut self.assets,
                         audio: &mut self.audio,
                         globals: &mut self.globals,
                         jobs: Some(&self.jobs),
+                        network: &mut self.network,
+                        multiplayer: Some(&mut *self.multiplayer),
                         update_queue: &self.next_update_queue,
                         fixed_update_queue: &self.next_fixed_update_queue,
                         draw_queue: &self.next_draw_queue,
@@ -615,10 +676,13 @@ impl GameInstance {
                         gui: &mut self.gui,
                         input: &mut self.input,
                         state_change: &mut self.state_change,
+                        multiplayer_change: &mut self.multiplayer_change,
                         assets: &mut self.assets,
                         audio: &mut self.audio,
                         globals: &mut self.globals,
                         jobs: Some(&self.jobs),
+                        network: &mut self.network,
+                        multiplayer: Some(&mut *self.multiplayer),
                         update_queue: &self.next_update_queue,
                         fixed_update_queue: &self.next_fixed_update_queue,
                         draw_queue: &self.next_draw_queue,
@@ -649,10 +713,13 @@ impl GameInstance {
                             gui: &mut self.gui,
                             input: &mut self.input,
                             state_change: &mut self.state_change,
+                            multiplayer_change: &mut self.multiplayer_change,
                             assets: &mut self.assets,
                             audio: &mut self.audio,
                             globals: &mut self.globals,
                             jobs: Some(&self.jobs),
+                            network: &mut self.network,
+                            multiplayer: Some(&mut *self.multiplayer),
                             update_queue: &self.next_update_queue,
                             fixed_update_queue: &self.next_fixed_update_queue,
                             draw_queue: &self.next_draw_queue,
@@ -680,10 +747,13 @@ impl GameInstance {
                             gui: &mut self.gui,
                             input: &mut self.input,
                             state_change: &mut self.state_change,
+                            multiplayer_change: &mut self.multiplayer_change,
                             assets: &mut self.assets,
                             audio: &mut self.audio,
                             globals: &mut self.globals,
                             jobs: Some(&self.jobs),
+                            network: &mut self.network,
+                            multiplayer: Some(&mut *self.multiplayer),
                             update_queue: &self.next_update_queue,
                             fixed_update_queue: &self.next_fixed_update_queue,
                             draw_queue: &self.next_draw_queue,
@@ -716,6 +786,49 @@ impl GameInstance {
         };
         let state_heartbeat = state_value.heartbeat();
 
+        self.network.maintain();
+        match std::mem::take(&mut self.multiplayer_change) {
+            GameMultiplayerChange::None => {}
+            GameMultiplayerChange::Set(multiplayer) => {
+                self.multiplayer = multiplayer;
+            }
+            GameMultiplayerChange::Reset => {
+                self.multiplayer = Box::new(NoMultiplayer);
+            }
+        }
+        if let Some((state, _, _)) = self.states.last_mut() {
+            self.multiplayer.maintain(
+                &mut **state,
+                GameContext {
+                    graphics,
+                    draw: &mut self.draw,
+                    gui: &mut self.gui,
+                    input: &mut self.input,
+                    state_change: &mut self.state_change,
+                    multiplayer_change: &mut self.multiplayer_change,
+                    assets: &mut self.assets,
+                    audio: &mut self.audio,
+                    globals: &mut self.globals,
+                    jobs: Some(&self.jobs),
+                    network: &mut self.network,
+                    multiplayer: None,
+                    update_queue: &self.next_update_queue,
+                    fixed_update_queue: &self.next_fixed_update_queue,
+                    draw_queue: &self.next_draw_queue,
+                    draw_gui_queue: &self.next_draw_gui_queue,
+                    universe: &mut self.universe,
+                    graph: &mut self.graph,
+                    state_heartbeat: &state_heartbeat,
+                    subsystems: GameSubsystems {
+                        subsystems: &mut self.subsystems,
+                    },
+                    time: total_time,
+                    frame: self.frame,
+                },
+                delta_time,
+            );
+        }
+
         let mut update_phase = || {
             if let Some((state, _, _)) = self.states.last_mut() {
                 state.update(
@@ -725,10 +838,13 @@ impl GameInstance {
                         gui: &mut self.gui,
                         input: &mut self.input,
                         state_change: &mut self.state_change,
+                        multiplayer_change: &mut self.multiplayer_change,
                         assets: &mut self.assets,
                         audio: &mut self.audio,
                         globals: &mut self.globals,
                         jobs: Some(&self.jobs),
+                        network: &mut self.network,
+                        multiplayer: Some(&mut *self.multiplayer),
                         update_queue: &self.next_update_queue,
                         fixed_update_queue: &self.next_fixed_update_queue,
                         draw_queue: &self.next_draw_queue,
@@ -753,10 +869,13 @@ impl GameInstance {
                         gui: &mut self.gui,
                         input: &mut self.input,
                         state_change: &mut self.state_change,
+                        multiplayer_change: &mut self.multiplayer_change,
                         assets: &mut self.assets,
                         audio: &mut self.audio,
                         globals: &mut self.globals,
                         jobs: Some(&self.jobs),
+                        network: &mut self.network,
+                        multiplayer: Some(&mut *self.multiplayer),
                         update_queue: &self.next_update_queue,
                         fixed_update_queue: &self.next_fixed_update_queue,
                         draw_queue: &self.next_draw_queue,
@@ -781,10 +900,13 @@ impl GameInstance {
                     gui: &mut self.gui,
                     input: &mut self.input,
                     state_change: &mut self.state_change,
+                    multiplayer_change: &mut self.multiplayer_change,
                     assets: &mut self.assets,
                     audio: &mut self.audio,
                     globals: &mut self.globals,
                     jobs: None,
+                    network: &mut self.network,
+                    multiplayer: Some(&mut *self.multiplayer),
                     update_queue: &self.next_update_queue,
                     fixed_update_queue: &self.next_fixed_update_queue,
                     draw_queue: &self.next_draw_queue,
@@ -824,10 +946,13 @@ impl GameInstance {
                         gui: &mut self.gui,
                         input: &mut self.input,
                         state_change: &mut self.state_change,
+                        multiplayer_change: &mut self.multiplayer_change,
                         assets: &mut self.assets,
                         audio: &mut self.audio,
                         globals: &mut self.globals,
                         jobs: Some(&self.jobs),
+                        network: &mut self.network,
+                        multiplayer: Some(&mut *self.multiplayer),
                         update_queue: &self.next_update_queue,
                         fixed_update_queue: &self.next_fixed_update_queue,
                         draw_queue: &self.next_draw_queue,
@@ -862,10 +987,13 @@ impl GameInstance {
                             gui: &mut self.gui,
                             input: &mut self.input,
                             state_change: &mut self.state_change,
+                            multiplayer_change: &mut self.multiplayer_change,
                             assets: &mut self.assets,
                             audio: &mut self.audio,
                             globals: &mut self.globals,
                             jobs: Some(&self.jobs),
+                            network: &mut self.network,
+                            multiplayer: Some(&mut *self.multiplayer),
                             update_queue: &self.next_update_queue,
                             fixed_update_queue: &self.next_fixed_update_queue,
                             draw_queue: &self.next_draw_queue,
@@ -890,10 +1018,13 @@ impl GameInstance {
                             gui: &mut self.gui,
                             input: &mut self.input,
                             state_change: &mut self.state_change,
+                            multiplayer_change: &mut self.multiplayer_change,
                             assets: &mut self.assets,
                             audio: &mut self.audio,
                             globals: &mut self.globals,
                             jobs: Some(&self.jobs),
+                            network: &mut self.network,
+                            multiplayer: Some(&mut *self.multiplayer),
                             update_queue: &self.next_update_queue,
                             fixed_update_queue: &self.next_fixed_update_queue,
                             draw_queue: &self.next_draw_queue,
@@ -919,10 +1050,13 @@ impl GameInstance {
                         gui: &mut self.gui,
                         input: &mut self.input,
                         state_change: &mut self.state_change,
+                        multiplayer_change: &mut self.multiplayer_change,
                         assets: &mut self.assets,
                         audio: &mut self.audio,
                         globals: &mut self.globals,
                         jobs: None,
+                        network: &mut self.network,
+                        multiplayer: Some(&mut *self.multiplayer),
                         update_queue: &self.next_update_queue,
                         fixed_update_queue: &self.next_fixed_update_queue,
                         draw_queue: &self.next_draw_queue,
@@ -962,10 +1096,13 @@ impl GameInstance {
                             gui: &mut self.gui,
                             input: &mut self.input,
                             state_change: &mut self.state_change,
+                            multiplayer_change: &mut self.multiplayer_change,
                             assets: &mut self.assets,
                             audio: &mut self.audio,
                             globals: &mut self.globals,
                             jobs: Some(&self.jobs),
+                            network: &mut self.network,
+                            multiplayer: Some(&mut *self.multiplayer),
                             update_queue: &self.next_update_queue,
                             fixed_update_queue: &self.next_fixed_update_queue,
                             draw_queue: &self.next_draw_queue,
@@ -1005,10 +1142,13 @@ impl GameInstance {
                 gui: &mut self.gui,
                 input: &mut self.input,
                 state_change: &mut self.state_change,
+                multiplayer_change: &mut self.multiplayer_change,
                 assets: &mut self.assets,
                 audio: &mut self.audio,
                 globals: &mut self.globals,
                 jobs: Some(&self.jobs),
+                network: &mut self.network,
+                multiplayer: Some(&mut *self.multiplayer),
                 update_queue: &self.next_update_queue,
                 fixed_update_queue: &self.next_fixed_update_queue,
                 draw_queue: &self.next_draw_queue,
@@ -1030,10 +1170,13 @@ impl GameInstance {
                 gui: &mut self.gui,
                 input: &mut self.input,
                 state_change: &mut self.state_change,
+                multiplayer_change: &mut self.multiplayer_change,
                 assets: &mut self.assets,
                 audio: &mut self.audio,
                 globals: &mut self.globals,
                 jobs: Some(&self.jobs),
+                network: &mut self.network,
+                multiplayer: Some(&mut *self.multiplayer),
                 update_queue: &self.next_update_queue,
                 fixed_update_queue: &self.next_fixed_update_queue,
                 draw_queue: &self.next_draw_queue,
@@ -1056,10 +1199,13 @@ impl GameInstance {
                 gui: &mut self.gui,
                 input: &mut self.input,
                 state_change: &mut self.state_change,
+                multiplayer_change: &mut self.multiplayer_change,
                 assets: &mut self.assets,
                 audio: &mut self.audio,
                 globals: &mut self.globals,
                 jobs: None,
+                network: &mut self.network,
+                multiplayer: Some(&mut *self.multiplayer),
                 update_queue: &self.next_update_queue,
                 fixed_update_queue: &self.next_fixed_update_queue,
                 draw_queue: &self.next_draw_queue,
@@ -1098,10 +1244,13 @@ impl GameInstance {
                     gui: &mut self.gui,
                     input: &mut self.input,
                     state_change: &mut self.state_change,
+                    multiplayer_change: &mut self.multiplayer_change,
                     assets: &mut self.assets,
                     audio: &mut self.audio,
                     globals: &mut self.globals,
                     jobs: Some(&self.jobs),
+                    network: &mut self.network,
+                    multiplayer: Some(&mut *self.multiplayer),
                     update_queue: &self.next_update_queue,
                     fixed_update_queue: &self.next_fixed_update_queue,
                     draw_queue: &self.next_draw_queue,
@@ -1130,10 +1279,13 @@ impl GameInstance {
                 gui: &mut self.gui,
                 input: &mut self.input,
                 state_change: &mut self.state_change,
+                multiplayer_change: &mut self.multiplayer_change,
                 assets: &mut self.assets,
                 audio: &mut self.audio,
                 globals: &mut self.globals,
                 jobs: Some(&self.jobs),
+                network: &mut self.network,
+                multiplayer: Some(&mut *self.multiplayer),
                 update_queue: &self.next_update_queue,
                 fixed_update_queue: &self.next_fixed_update_queue,
                 draw_queue: &self.next_draw_queue,
@@ -1155,10 +1307,13 @@ impl GameInstance {
                 gui: &mut self.gui,
                 input: &mut self.input,
                 state_change: &mut self.state_change,
+                multiplayer_change: &mut self.multiplayer_change,
                 assets: &mut self.assets,
                 audio: &mut self.audio,
                 globals: &mut self.globals,
                 jobs: Some(&self.jobs),
+                network: &mut self.network,
+                multiplayer: Some(&mut *self.multiplayer),
                 update_queue: &self.next_update_queue,
                 fixed_update_queue: &self.next_fixed_update_queue,
                 draw_queue: &self.next_draw_queue,
@@ -1181,10 +1336,13 @@ impl GameInstance {
                 gui: &mut self.gui,
                 input: &mut self.input,
                 state_change: &mut self.state_change,
+                multiplayer_change: &mut self.multiplayer_change,
                 assets: &mut self.assets,
                 audio: &mut self.audio,
                 globals: &mut self.globals,
                 jobs: None,
+                network: &mut self.network,
+                multiplayer: Some(&mut *self.multiplayer),
                 update_queue: &self.next_update_queue,
                 fixed_update_queue: &self.next_fixed_update_queue,
                 draw_queue: &self.next_draw_queue,
@@ -1223,10 +1381,13 @@ impl GameInstance {
                     gui: &mut self.gui,
                     input: &mut self.input,
                     state_change: &mut self.state_change,
+                    multiplayer_change: &mut self.multiplayer_change,
                     assets: &mut self.assets,
                     audio: &mut self.audio,
                     globals: &mut self.globals,
                     jobs: Some(&self.jobs),
+                    network: &mut self.network,
+                    multiplayer: Some(&mut *self.multiplayer),
                     update_queue: &self.next_update_queue,
                     fixed_update_queue: &self.next_fixed_update_queue,
                     draw_queue: &self.next_draw_queue,
@@ -1248,10 +1409,13 @@ impl GameInstance {
                 gui: &mut self.gui,
                 input: &mut self.input,
                 state_change: &mut self.state_change,
+                multiplayer_change: &mut self.multiplayer_change,
                 assets: &mut self.assets,
                 audio: &mut self.audio,
                 globals: &mut self.globals,
                 jobs: Some(&self.jobs),
+                network: &mut self.network,
+                multiplayer: Some(&mut *self.multiplayer),
                 update_queue: &self.next_update_queue,
                 fixed_update_queue: &self.next_fixed_update_queue,
                 draw_queue: &self.next_draw_queue,
@@ -1307,10 +1471,13 @@ impl GameInstance {
                 gui: &mut self.gui,
                 input: &mut self.input,
                 state_change: &mut self.state_change,
+                multiplayer_change: &mut self.multiplayer_change,
                 assets: &mut self.assets,
                 audio: &mut self.audio,
                 globals: &mut self.globals,
                 jobs: None,
+                network: &mut self.network,
+                multiplayer: Some(&mut *self.multiplayer),
                 update_queue: &self.next_update_queue,
                 fixed_update_queue: &self.next_fixed_update_queue,
                 draw_queue: &self.next_draw_queue,
@@ -1383,10 +1550,13 @@ impl AppState<Vertex> for GameInstance {
                 gui: &mut self.gui,
                 input: &mut self.input,
                 state_change: &mut self.state_change,
+                multiplayer_change: &mut self.multiplayer_change,
                 assets: &mut self.assets,
                 audio: &mut self.audio,
                 globals: &mut self.globals,
                 jobs: Some(&self.jobs),
+                network: &mut self.network,
+                multiplayer: Some(&mut *self.multiplayer),
                 update_queue: &self.next_update_queue,
                 fixed_update_queue: &self.next_fixed_update_queue,
                 draw_queue: &self.next_draw_queue,
