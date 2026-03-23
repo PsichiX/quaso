@@ -3,7 +3,7 @@ members = ["templates/*"]
 
 [package]
 name = "quaso"
-version = "0.55.0"
+version = "0.56.0"
 edition = "2024"
 authors = ["Patryk 'PsichiX' Budzynski <psichix@gmail.com>"]
 description = "Toolset for making Micro Games quickly"
@@ -46,11 +46,11 @@ moirai = "0.8"
 keket = "0.20"
 nodio = "0.5"
 emergent = "1.7"
-tehuti = "0.19"
-tehuti-client-server = "0.19"
-tehuti-timeline = "0.19"
-tehuti-socket = "0.19"
-tehuti-diagnostics = "0.19"
+tehuti = "0.20"
+tehuti-client-server = "0.20"
+tehuti-timeline = "0.20"
+tehuti-socket = "0.20"
+tehuti-diagnostics = "0.20"
 typid = "1"
 image = { version = "0.25", default-features = false, features = [
     "png",

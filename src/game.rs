@@ -787,16 +787,75 @@ impl GameInstance {
         let state_heartbeat = state_value.heartbeat();
 
         self.network.maintain();
-        match std::mem::take(&mut self.multiplayer_change) {
-            GameMultiplayerChange::None => {}
-            GameMultiplayerChange::Set(multiplayer) => {
-                self.multiplayer = multiplayer;
-            }
-            GameMultiplayerChange::Reset => {
-                self.multiplayer = Box::new(NoMultiplayer);
-            }
-        }
         if let Some((state, _, _)) = self.states.last_mut() {
+            let change = match std::mem::take(&mut self.multiplayer_change) {
+                GameMultiplayerChange::None => None,
+                GameMultiplayerChange::Set(multiplayer) => Some(multiplayer),
+                GameMultiplayerChange::Reset => {
+                    Some(Box::new(NoMultiplayer) as Box<dyn GameMultiplayer>)
+                }
+            };
+            if let Some(multiplayer) = change {
+                self.multiplayer.on_cleanup(
+                    &mut **state,
+                    GameContext {
+                        graphics,
+                        draw: &mut self.draw,
+                        gui: &mut self.gui,
+                        input: &mut self.input,
+                        state_change: &mut self.state_change,
+                        multiplayer_change: &mut self.multiplayer_change,
+                        assets: &mut self.assets,
+                        audio: &mut self.audio,
+                        globals: &mut self.globals,
+                        jobs: Some(&self.jobs),
+                        network: &mut self.network,
+                        multiplayer: None,
+                        update_queue: &self.next_update_queue,
+                        fixed_update_queue: &self.next_fixed_update_queue,
+                        draw_queue: &self.next_draw_queue,
+                        draw_gui_queue: &self.next_draw_gui_queue,
+                        universe: &mut self.universe,
+                        graph: &mut self.graph,
+                        state_heartbeat: &state_heartbeat,
+                        subsystems: GameSubsystems {
+                            subsystems: &mut self.subsystems,
+                        },
+                        time: total_time,
+                        frame: self.frame,
+                    },
+                );
+                self.multiplayer = multiplayer;
+                self.multiplayer.on_startup(
+                    &mut **state,
+                    GameContext {
+                        graphics,
+                        draw: &mut self.draw,
+                        gui: &mut self.gui,
+                        input: &mut self.input,
+                        state_change: &mut self.state_change,
+                        multiplayer_change: &mut self.multiplayer_change,
+                        assets: &mut self.assets,
+                        audio: &mut self.audio,
+                        globals: &mut self.globals,
+                        jobs: Some(&self.jobs),
+                        network: &mut self.network,
+                        multiplayer: None,
+                        update_queue: &self.next_update_queue,
+                        fixed_update_queue: &self.next_fixed_update_queue,
+                        draw_queue: &self.next_draw_queue,
+                        draw_gui_queue: &self.next_draw_gui_queue,
+                        universe: &mut self.universe,
+                        graph: &mut self.graph,
+                        state_heartbeat: &state_heartbeat,
+                        subsystems: GameSubsystems {
+                            subsystems: &mut self.subsystems,
+                        },
+                        time: total_time,
+                        frame: self.frame,
+                    },
+                );
+            }
             self.multiplayer.maintain(
                 &mut **state,
                 GameContext {

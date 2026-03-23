@@ -12,12 +12,12 @@ crate-type = ["cdylib"]
 editor = ["quaso/editor"]
 
 [dependencies.quaso]
-version = "0.55"
+version = "0.56"
 path = "../.."
 default-features = false
 
 [build-dependencies.quaso]
-version = "0.55"
+version = "0.56"
 path = "../.."
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]

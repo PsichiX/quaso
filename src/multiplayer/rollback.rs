@@ -10,7 +10,8 @@ use tehuti::{
     codec::postcard::PostcardCodec,
     event::{Receiver, Sender, unbounded},
     peer::{
-        Peer, PeerBuilder, PeerDestructurer, PeerId, PeerInfo, PeerRoleId, TypedPeer, TypedPeerRole,
+        Peer, PeerBuilder, PeerDestructurer, PeerId, PeerInfo, PeerKiller, PeerRoleId, TypedPeer,
+        TypedPeerRole,
     },
     third_party::time::{Duration, Instant},
 };
@@ -80,12 +81,10 @@ pub trait RollbackGameState {
         } else if let Some(event) = payload.downcast_ref::<RollbackHandleInputsEvent>() {
             self.handle_inputs(context, event.current_tick);
         } else if let Some(event) = payload.downcast_mut::<RollbackFindInputDivergenceEvent>() {
-            let divergence = self.find_input_divergence(context, event.current_tick);
-            event.out_divergence = divergence;
+            event.out_divergence = self.find_input_divergence(context, event.current_tick);
         } else if let Some(event) = payload.downcast_mut::<RollbackClientFindStateDivergenceEvent>()
         {
-            let divergence = self.client_find_state_divergence(context, event.current_tick);
-            event.out_divergence = divergence;
+            event.out_divergence = self.client_find_state_divergence(context, event.current_tick);
         } else if let Some(event) = payload.downcast_ref::<RollbackServerSendStateEvent>() {
             self.server_send_state(context, event.current_tick);
         } else if let Some(event) = payload.downcast_ref::<RollbackTickEvent>() {
@@ -154,7 +153,7 @@ pub struct RollbackMultiplayer<const AUTHORITY_CLOCK_CHANNEL: u64> {
     pub process_lifecycle_events: bool,
     pub tick_delta_time: f32,
     pub ticks_limit_per_frame: usize,
-    pub server_send_state_inverval: Duration,
+    pub server_send_state_interval: Duration,
     pub client_lead_ticks: u64,
     pub client_ping_interval: Duration,
 }
@@ -188,7 +187,7 @@ impl<const AUTHORITY_CLOCK_CHANNEL: u64> RollbackMultiplayer<AUTHORITY_CLOCK_CHA
             // default to 20 FPS
             tick_delta_time: 0.05,
             ticks_limit_per_frame: usize::MAX,
-            server_send_state_inverval: Duration::from_millis(1000 / 20),
+            server_send_state_interval: Duration::from_millis(1000 / 20),
             client_lead_ticks: 2,
             client_ping_interval: Duration::from_millis(250),
         })
@@ -215,7 +214,7 @@ impl<const AUTHORITY_CLOCK_CHANNEL: u64> RollbackMultiplayer<AUTHORITY_CLOCK_CHA
     }
 
     pub fn with_server_send_state_interval(mut self, value: Duration) -> Self {
-        self.server_send_state_inverval = value;
+        self.server_send_state_interval = value;
         self
     }
 
@@ -258,7 +257,7 @@ impl<const AUTHORITY_CLOCK_CHANNEL: u64> RollbackMultiplayer<AUTHORITY_CLOCK_CHA
             self.resimulate(state, context, divergence);
         }
 
-        if self.state_send_timer.elapsed() >= self.server_send_state_inverval {
+        if self.state_send_timer.elapsed() >= self.server_send_state_interval {
             self.state_send_timer = Instant::now();
             self.server_send_state(state, context);
         }
@@ -360,11 +359,6 @@ impl<const AUTHORITY_CLOCK_CHANNEL: u64> RollbackMultiplayer<AUTHORITY_CLOCK_CHA
 
     fn prepare_current_tick(&mut self, state: &mut dyn GameState, context: &mut GameContext) {
         let current_tick = self.current_tick();
-        self.authority
-            .extension_mut()
-            .unwrap()
-            .clock
-            .set_tick(current_tick);
         let mut context = unsafe { context.fork() };
         context.multiplayer = Some(self);
         let mut payload = RollbackPrepareFrameEvent { current_tick };
@@ -443,11 +437,6 @@ impl<const AUTHORITY_CLOCK_CHANNEL: u64> RollbackMultiplayer<AUTHORITY_CLOCK_CHA
         resimulating: bool,
     ) {
         let current_tick = self.current_tick();
-        self.authority
-            .extension_mut()
-            .unwrap()
-            .clock
-            .set_tick(current_tick);
         let tick_delta_time = self.tick_delta_time;
         let mut context = unsafe { context.fork() };
         context.multiplayer = Some(self);
@@ -493,15 +482,13 @@ impl<const AUTHORITY_CLOCK_CHANNEL: u64> GameMultiplayer
             return;
         }
 
-        let added_peers_receiver = self.added_peers_receiver.clone();
-        for peer in added_peers_receiver.iter() {
+        for peer in self.added_peers_receiver.clone().iter() {
             let mut context = unsafe { context.fork() };
             context.multiplayer = Some(self);
             state.multiplayer_peer_added(context, peer);
         }
 
-        let removed_peers_receiver = self.removed_peers_receiver.clone();
-        for peer_id in removed_peers_receiver.iter() {
+        for peer_id in self.removed_peers_receiver.clone().iter() {
             let mut context = unsafe { context.fork() };
             context.multiplayer = Some(self);
             state.multiplayer_peer_removed(context, peer_id);
@@ -562,6 +549,7 @@ pub enum RollbackPlayerRole<
         state_sender: Sender<Dispatch<HistoryEvent<State>>>,
         input_history: HistoryBuffer<Input>,
         state_history: HistoryBuffer<State>,
+        _peer_killer: PeerKiller,
     },
     ServerRemote {
         info: PeerInfo,
@@ -569,6 +557,7 @@ pub enum RollbackPlayerRole<
         state_sender: Sender<Dispatch<HistoryEvent<State>>>,
         input_history: HistoryBuffer<Input>,
         state_history: HistoryBuffer<State>,
+        _peer_killer: PeerKiller,
     },
     ClientLocal {
         info: PeerInfo,
@@ -576,6 +565,7 @@ pub enum RollbackPlayerRole<
         state_receiver: Receiver<Dispatch<HistoryEvent<State>>>,
         input_history: HistoryBuffer<Input>,
         state_history: HistoryBuffer<State>,
+        _peer_killer: PeerKiller,
     },
     ClientRemote {
         info: PeerInfo,
@@ -583,6 +573,7 @@ pub enum RollbackPlayerRole<
         state_receiver: Receiver<Dispatch<HistoryEvent<State>>>,
         input_history: HistoryBuffer<Input>,
         state_history: HistoryBuffer<State>,
+        _peer_killer: PeerKiller,
     },
 }
 
@@ -722,6 +713,7 @@ impl<
                 state_sender: peer.write::<HistoryEvent<State>>(Self::PLAYER_STATE_CHANNEL)?,
                 input_history: HistoryBuffer::with_capacity(HISTORY_CAPACITY),
                 state_history: HistoryBuffer::with_capacity(HISTORY_CAPACITY),
+                _peer_killer: peer.take_killer(),
             }),
             (true, false) => Ok(Self::ServerRemote {
                 info: *peer.info(),
@@ -729,6 +721,7 @@ impl<
                 state_sender: peer.write::<HistoryEvent<State>>(Self::PLAYER_STATE_CHANNEL)?,
                 input_history: HistoryBuffer::with_capacity(HISTORY_CAPACITY),
                 state_history: HistoryBuffer::with_capacity(HISTORY_CAPACITY),
+                _peer_killer: peer.take_killer(),
             }),
             (false, true) => Ok(Self::ClientLocal {
                 info: *peer.info(),
@@ -736,6 +729,7 @@ impl<
                 state_receiver: peer.read::<HistoryEvent<State>>(Self::PLAYER_STATE_CHANNEL)?,
                 input_history: HistoryBuffer::with_capacity(HISTORY_CAPACITY),
                 state_history: HistoryBuffer::with_capacity(HISTORY_CAPACITY),
+                _peer_killer: peer.take_killer(),
             }),
             (false, false) => Ok(Self::ClientRemote {
                 info: *peer.info(),
@@ -743,6 +737,7 @@ impl<
                 state_receiver: peer.read::<HistoryEvent<State>>(Self::PLAYER_STATE_CHANNEL)?,
                 input_history: HistoryBuffer::with_capacity(HISTORY_CAPACITY),
                 state_history: HistoryBuffer::with_capacity(HISTORY_CAPACITY),
+                _peer_killer: peer.take_killer(),
             }),
         }
     }

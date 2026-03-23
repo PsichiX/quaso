@@ -1,6 +1,7 @@
 pub mod client_server;
 pub mod clock;
 pub mod csp_ssr;
+pub mod ggpo;
 pub mod rollback;
 pub mod tcp;
 
@@ -19,7 +20,7 @@ use tehuti::{
     },
     event::Sender,
     meeting::MeetingInterface,
-    peer::PeerFactory,
+    peer::{PeerFactory, PeerId},
 };
 use tehuti_timeline::time::TimeStamp;
 
@@ -44,6 +45,20 @@ pub struct GameNetwork {
     connections: HashMap<EngineId, Box<dyn GameConnection>>,
 }
 
+impl Drop for GameNetwork {
+    fn drop(&mut self) {
+        self.clear_connections();
+        if let Err(error) = self.meeting.maintain() {
+            tracing::event!(
+                target: "quaso::multiplayer::network",
+                tracing::Level::ERROR,
+                "Failed to maintain meeting on drop: {}",
+                error
+            );
+        }
+    }
+}
+
 impl Default for GameNetwork {
     fn default() -> Self {
         Self::new(Default::default())
@@ -66,17 +81,33 @@ impl GameNetwork {
         }
     }
 
-    pub fn with_meeting_config(mut self, config: EngineMeetingConfig) -> Self {
+    pub fn with_engine_config(mut self, config: EngineMeetingConfig) -> Self {
         self.meeting.config = config;
         self
     }
 
-    pub fn meeting_config(&self) -> &EngineMeetingConfig {
+    pub fn engine_config(&self) -> &EngineMeetingConfig {
         &self.meeting.config
     }
 
-    pub fn meeting_config_mut(&mut self) -> &mut EngineMeetingConfig {
+    pub fn engine_config_mut(&mut self) -> &mut EngineMeetingConfig {
         &mut self.meeting.config
+    }
+
+    pub fn engine_meeting_factory(&self) -> &Arc<PeerFactory> {
+        self.meeting.meeting_factory()
+    }
+
+    pub fn engine_peers(&self) -> impl Iterator<Item = PeerId> {
+        self.meeting.peers()
+    }
+
+    pub fn engine_meeting_peers(&self) -> impl Iterator<Item = PeerId> {
+        self.meeting.meeting_peers()
+    }
+
+    pub fn engines(&self) -> impl Iterator<Item = EngineId> {
+        self.meeting.engines()
     }
 
     pub fn add_connection(&mut self, mut connection: impl GameConnection + 'static) -> EngineId {
@@ -92,6 +123,9 @@ impl GameNetwork {
     }
 
     pub fn clear_connections(&mut self) {
+        for connection in self.connections.values_mut() {
+            connection.on_unregister(&self.events_sender);
+        }
         self.connections.clear();
     }
 
@@ -115,14 +149,12 @@ impl GameNetwork {
                     "Connection {:?} failed to maintain and will be removed",
                     id
                 );
+                connection.on_unregister(&self.events_sender);
                 false
             } else {
                 true
             }
         });
-        for connection in self.connections.values_mut() {
-            connection.maintain();
-        }
         if let Err(error) = self.meeting.maintain() {
             tracing::event!(
                 target: "quaso::multiplayer::network",
@@ -144,6 +176,12 @@ pub enum GameMultiplayerChange {
 
 pub trait GameMultiplayer {
     fn current_tick(&self) -> TimeStamp;
+
+    #[allow(unused_variables)]
+    fn on_startup(&mut self, state: &mut dyn GameState, context: GameContext) {}
+
+    #[allow(unused_variables)]
+    fn on_cleanup(&mut self, state: &mut dyn GameState, context: GameContext) {}
 
     fn maintain(&mut self, state: &mut dyn GameState, context: GameContext, delta_time: f32);
 

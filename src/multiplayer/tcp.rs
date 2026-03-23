@@ -63,8 +63,33 @@ impl TcpServerConnection {
     }
 
     pub fn disconnect(&mut self, engine_id: EngineId) {
-        self.sessions
-            .retain(|session| session.remote_engine_id() != engine_id);
+        self.sessions.retain(|session| {
+            if session.remote_engine_id() == engine_id {
+                tracing::event!(
+                    target: "quaso::multiplayer::tcp::server",
+                    tracing::Level::DEBUG,
+                    "Disconnecting session: {:?}<->{:?}, remote engine ID: {:?}",
+                    session.local_addr().unwrap(),
+                    session.peer_addr().unwrap(),
+                    session.remote_engine_id()
+                );
+
+                if let Some(events_sender) = &self.events_sender
+                    && let Err(error) =
+                        events_sender.send(EngineMeetingEvent::UnregisterEngine { engine_id })
+                {
+                    tracing::event!(
+                        target: "quaso::multiplayer::tcp::server",
+                        tracing::Level::ERROR,
+                        "Failed to send UnregisterEngine event: {}",
+                        error
+                    );
+                }
+                false
+            } else {
+                true
+            }
+        });
     }
 }
 
@@ -77,6 +102,13 @@ impl GameConnection for TcpServerConnection {
     fn on_unregister(&mut self, events_sender: &Sender<EngineMeetingEvent>) {
         for session in &self.sessions {
             let engine_id = session.remote_engine_id();
+            tracing::event!(
+                target: "quaso::multiplayer::tcp::server",
+                tracing::Level::DEBUG,
+                "Unregistering TCP server connection with remote engine ID {:?} at {:?}",
+                engine_id,
+                session.peer_addr().unwrap()
+            );
             if let Err(error) =
                 events_sender.send(EngineMeetingEvent::UnregisterEngine { engine_id })
             {
@@ -137,7 +169,7 @@ impl GameConnection for TcpServerConnection {
                 tracing::event!(
                     target: "quaso::multiplayer::tcp::server",
                     tracing::Level::ERROR,
-                    "Failed to maintain session: {}",
+                    "Failed to maintain session (will be removed): {}",
                     error
                 );
                 if let Some(events_sender) = &self.events_sender {
@@ -200,7 +232,7 @@ impl TcpClientConnection {
         tracing::event!(
             target: "quaso::multiplayer::tcp::client",
             tracing::Level::DEBUG,
-            "Established TCP session with remote engine ID {} at {:?}",
+            "Established TCP session with remote engine ID {:?} at {:?}",
             session.remote_engine_id(),
             session.peer_addr()
         );
@@ -231,7 +263,7 @@ impl GameConnection for TcpClientConnection {
         tracing::event!(
             target: "quaso::multiplayer::tcp::client",
             tracing::Level::DEBUG,
-            "Registering TCP client connection with remote engine ID {} at {:?}",
+            "Registering TCP client connection with remote engine ID {:?} at {:?}",
             engine_id,
             self.session.peer_addr().unwrap()
         );
@@ -255,7 +287,7 @@ impl GameConnection for TcpClientConnection {
         tracing::event!(
             target: "quaso::multiplayer::tcp::client",
             tracing::Level::DEBUG,
-            "Unregistering TCP client connection with remote engine ID {} at {:?}",
+            "Unregistering TCP client connection with remote engine ID {:?} at {:?}",
             engine_id,
             self.session.peer_addr().unwrap()
         );

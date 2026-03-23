@@ -11,7 +11,8 @@ use tehuti::{
     codec::postcard::PostcardCodec,
     event::{Receiver, Sender, unbounded},
     peer::{
-        Peer, PeerBuilder, PeerDestructurer, PeerId, PeerInfo, PeerRoleId, TypedPeer, TypedPeerRole,
+        Peer, PeerBuilder, PeerDestructurer, PeerId, PeerInfo, PeerKiller, PeerRoleId, TypedPeer,
+        TypedPeerRole,
     },
 };
 use tehuti_client_server::authority::{Authority, AuthorityUserData};
@@ -155,7 +156,7 @@ pub struct CspSsrMultiplayer<const AUTHORITY_CLOCK_CHANNEL: u64> {
     pub process_lifecycle_events: bool,
     pub tick_delta_time: f32,
     pub ticks_limit_per_frame: usize,
-    pub server_send_state_inverval: Duration,
+    pub server_send_state_interval: Duration,
     pub client_lead_ticks: u64,
     pub client_ping_interval: Duration,
 }
@@ -189,7 +190,7 @@ impl<const AUTHORITY_CLOCK_CHANNEL: u64> CspSsrMultiplayer<AUTHORITY_CLOCK_CHANN
             // default to 20 FPS
             tick_delta_time: 0.05,
             ticks_limit_per_frame: usize::MAX,
-            server_send_state_inverval: Duration::from_millis(1000 / 20),
+            server_send_state_interval: Duration::from_millis(1000 / 20),
             client_lead_ticks: 2,
             client_ping_interval: Duration::from_millis(250),
         })
@@ -216,7 +217,7 @@ impl<const AUTHORITY_CLOCK_CHANNEL: u64> CspSsrMultiplayer<AUTHORITY_CLOCK_CHANN
     }
 
     pub fn with_server_send_state_interval(mut self, value: Duration) -> Self {
-        self.server_send_state_inverval = value;
+        self.server_send_state_interval = value;
         self
     }
 
@@ -259,7 +260,7 @@ impl<const AUTHORITY_CLOCK_CHANNEL: u64> CspSsrMultiplayer<AUTHORITY_CLOCK_CHANN
             self.resimulate(state, context, divergence);
         }
 
-        if self.state_send_timer.elapsed() >= self.server_send_state_inverval {
+        if self.state_send_timer.elapsed() >= self.server_send_state_interval {
             self.state_send_timer = Instant::now();
             self.server_send_state(state, context);
         }
@@ -549,6 +550,7 @@ pub enum CspSsrPlayerRole<
         state_sender: Sender<Dispatch<HistoryEvent<State>>>,
         input_history: HistoryBuffer<Input>,
         state_history: HistoryBuffer<State>,
+        _peer_killer: PeerKiller,
     },
     ServerRemote {
         info: PeerInfo,
@@ -556,6 +558,7 @@ pub enum CspSsrPlayerRole<
         state_sender: Sender<Dispatch<HistoryEvent<State>>>,
         input_history: HistoryBuffer<Input>,
         state_history: HistoryBuffer<State>,
+        _peer_killer: PeerKiller,
     },
     ClientLocal {
         info: PeerInfo,
@@ -563,11 +566,13 @@ pub enum CspSsrPlayerRole<
         state_receiver: Receiver<Dispatch<HistoryEvent<State>>>,
         input_history: HistoryBuffer<Input>,
         state_history: HistoryBuffer<State>,
+        _peer_killer: PeerKiller,
     },
     ClientRemote {
         info: PeerInfo,
         state_receiver: Receiver<Dispatch<HistoryEvent<State>>>,
         state_history: HistoryBuffer<State>,
+        _peer_killer: PeerKiller,
     },
 }
 
@@ -696,6 +701,7 @@ impl<
                 state_sender: peer.write::<HistoryEvent<State>>(Self::PLAYER_STATE_CHANNEL)?,
                 input_history: HistoryBuffer::with_capacity(HISTORY_CAPACITY),
                 state_history: HistoryBuffer::with_capacity(HISTORY_CAPACITY),
+                _peer_killer: peer.take_killer(),
             }),
             (true, false) => Ok(Self::ServerRemote {
                 info: *peer.info(),
@@ -703,6 +709,7 @@ impl<
                 state_sender: peer.write::<HistoryEvent<State>>(Self::PLAYER_STATE_CHANNEL)?,
                 input_history: HistoryBuffer::with_capacity(HISTORY_CAPACITY),
                 state_history: HistoryBuffer::with_capacity(HISTORY_CAPACITY),
+                _peer_killer: peer.take_killer(),
             }),
             (false, true) => Ok(Self::ClientLocal {
                 info: *peer.info(),
@@ -710,11 +717,13 @@ impl<
                 state_receiver: peer.read::<HistoryEvent<State>>(Self::PLAYER_STATE_CHANNEL)?,
                 input_history: HistoryBuffer::with_capacity(HISTORY_CAPACITY),
                 state_history: HistoryBuffer::with_capacity(HISTORY_CAPACITY),
+                _peer_killer: peer.take_killer(),
             }),
             (false, false) => Ok(Self::ClientRemote {
                 info: *peer.info(),
                 state_receiver: peer.read::<HistoryEvent<State>>(Self::PLAYER_STATE_CHANNEL)?,
                 state_history: HistoryBuffer::with_capacity(HISTORY_CAPACITY),
+                _peer_killer: peer.take_killer(),
             }),
         }
     }

@@ -99,7 +99,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     GameLauncher::new(GameInstance::new(Preloader).setup_assets(|assets| {
         *assets = make_directory_database("./resources/").unwrap();
     }))
-    .title("Netcode: Client-Server")
+    .title("Netcode: Replicated Client-Server")
     .config(Config::load_from_file("./resources/GameConfig.toml")?)
     .run();
     Ok(())
