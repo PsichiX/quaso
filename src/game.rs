@@ -9,7 +9,7 @@ use crate::{
     audio::Audio,
     context::{GameContext, GameSubsystems},
     gc::{DynGc, Gc},
-    multiplayer::{GameMultiplayer, GameMultiplayerChange, GameNetwork, NoMultiplayer},
+    multiplayer::{GameMultiplayer, GameMultiplayerChange, GameNetwork, local::LocalMultiplayer},
     third_party::{
         time::{Duration, Instant},
         windowing::{
@@ -373,7 +373,7 @@ impl Default for GameInstance {
             globals: Default::default(),
             jobs: Default::default(),
             network: Default::default(),
-            multiplayer: Box::new(NoMultiplayer),
+            multiplayer: Box::new(LocalMultiplayer::default()),
             multiplayer_change: Default::default(),
             next_frame_queue: Default::default(),
             update_queue: Default::default(),
@@ -792,7 +792,7 @@ impl GameInstance {
                 GameMultiplayerChange::None => None,
                 GameMultiplayerChange::Set(multiplayer) => Some(multiplayer),
                 GameMultiplayerChange::Reset => {
-                    Some(Box::new(NoMultiplayer) as Box<dyn GameMultiplayer>)
+                    Some(Box::new(LocalMultiplayer::default()) as Box<dyn GameMultiplayer>)
                 }
             };
             if let Some(multiplayer) = change {

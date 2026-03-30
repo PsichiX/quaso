@@ -7,8 +7,9 @@ use quaso::{
     game_state_custom_event, inputs_bitstruct,
     multiplayer::{
         GameMultiplayerChange, GameNetwork,
-        ggpo::{GgpoGameState, GgpoMultiplayer, GgpoPlayerCommunication, GgpoPlayerRole},
+        ggpo::{GgpoMultiplayer, GgpoPlayerCommunication, GgpoPlayerRole},
         tcp::{TcpClientConnection, TcpServerConnection},
+        universal::{UniversalMultiplayerAuthority, UniversalMultiplayerGameState},
     },
     third_party::{
         fontdue::layout::{HorizontalAlign, VerticalAlign},
@@ -47,23 +48,22 @@ use quaso::{
             channel::Dispatch,
             hash,
             peer::{Peer, PeerFactory, PeerId, TypedPeerRole},
-            third_party::rust_decimal::Decimal,
         },
-        tehuti_timeline::{history::HistoryEvent, time::TimeStamp},
+        tehuti_timeline::time::TimeStamp,
         time::{Duration, Instant},
         tracing::{debug, level_filters::LevelFilter},
         tracing_subscriber::{
             Layer, fmt::layer, layer::SubscriberExt, registry, util::SubscriberInitExt,
         },
-        vek::{
-            Rgba, Vec2,
-            num_traits::{FromPrimitive, ToPrimitive},
-        },
+        vek::{Rgba, Vec2},
         windowing::event::VirtualKeyCode,
     },
 };
 use serde::{Deserialize, Serialize};
 use std::{any::Any, collections::BTreeMap, error::Error, sync::Arc};
+use tehuti::fixed::Fixed;
+
+type Number = Fixed<6>;
 
 const ADDRESS: &str = "127.0.0.1:12345";
 const PLAYER_ROLE: u64 = 1;
@@ -74,7 +74,6 @@ const SEND_STATE_HASH_WINDOW: u64 = 8;
 const INPUT_DELAY_TICKS: u64 = 3;
 const MAX_PREDICTION_TICKS: u64 = 6;
 const SPEED: f32 = 100.0;
-const DECIMAL_PRECISION: u32 = 6;
 const COLOR_WHITE: Color = Color {
     r: 1.0,
     g: 1.0,
@@ -413,11 +412,11 @@ impl GameState for State {
     }
 
     game_state_custom_event! {
-        trait(GgpoGameState)
+        trait(UniversalMultiplayerGameState)
     }
 }
 
-impl GgpoGameState for State {
+impl UniversalMultiplayerGameState for State {
     fn on_stop(&mut self, context: GameContext, _current_tick: TimeStamp) {
         *context.state_change = GameStateChange::Swap(Box::new(Lobby::default()));
     }
@@ -464,8 +463,10 @@ impl GgpoGameState for State {
 
             player.role.input_history.set(input_tick, input);
             let since = current_tick - SEND_INPUT_WINDOW;
-            if let Some(event) =
-                HistoryEvent::collect_history(&player.role.input_history, since..=input_tick)
+            if let Some(event) = player
+                .role
+                .input_history
+                .collect_history(since..=input_tick)
             {
                 input_sender.send(event.into()).ok();
             }
@@ -476,6 +477,7 @@ impl GgpoGameState for State {
         &mut self,
         _context: GameContext,
         _current_tick: TimeStamp,
+        _authority: UniversalMultiplayerAuthority,
     ) -> Option<TimeStamp> {
         let mut divergence = None;
 
@@ -485,8 +487,10 @@ impl GgpoGameState for State {
             {
                 for Dispatch { message, .. } in input_receiver.iter() {
                     player.confirmed_tick = player.confirmed_tick.max(message.now());
-                    let div = message
-                        .apply_history_divergence(&mut player.role.input_history)
+                    let div = player
+                        .role
+                        .input_history
+                        .apply_history_divergence(&message)
                         .unwrap();
                     divergence = TimeStamp::possibly_oldest(divergence, div);
                 }
@@ -513,10 +517,10 @@ impl GgpoGameState for State {
                 && let GgpoPlayerCommunication::Local {
                     state_hash_sender, ..
                 } = &player.role.communication
-                && let Some(event) = HistoryEvent::collect_history(
-                    &player.role.state_hash_history,
-                    since..=current_tick,
-                )
+                && let Some(event) = player
+                    .role
+                    .state_hash_history
+                    .collect_history(since..=current_tick)
             {
                 self.send_state_timer = Instant::now();
                 state_hash_sender.send(event.into()).ok();
@@ -554,7 +558,7 @@ impl GgpoGameState for State {
         delta_time: f32,
         _resimulating: bool,
     ) {
-        let delta_time = f32_to_decimal(delta_time);
+        let delta_time = Number::from_f32(delta_time);
         let prev_tick = current_tick - 1;
 
         for player in self.players.values_mut() {
@@ -572,18 +576,18 @@ impl GgpoGameState for State {
                 .unwrap_or_default();
 
             state.velocity_x = match (input.left(), input.right()) {
-                (true, false) => f32_to_decimal(-SPEED),
-                (false, true) => f32_to_decimal(SPEED),
-                _ => f32_to_decimal(0.0),
+                (true, false) => Number::from_f32(-SPEED),
+                (false, true) => Number::from_f32(SPEED),
+                _ => Number::from_f32(0.0),
             };
             state.velocity_y = match (input.up(), input.down()) {
-                (true, false) => f32_to_decimal(-SPEED),
-                (false, true) => f32_to_decimal(SPEED),
-                _ => f32_to_decimal(0.0),
+                (true, false) => Number::from_f32(-SPEED),
+                (false, true) => Number::from_f32(SPEED),
+                _ => Number::from_f32(0.0),
             };
 
-            state.position_x += decimal_force_precision(state.velocity_x * delta_time);
-            state.position_y += decimal_force_precision(state.velocity_y * delta_time);
+            state.position_x += state.velocity_x * delta_time;
+            state.position_y += state.velocity_y * delta_time;
 
             player.role.input_history.set(current_tick, input);
             player.role.state_history.set(current_tick, state);
@@ -602,8 +606,8 @@ impl GgpoGameState for State {
                 .get_extrapolated(current_tick)
                 .copied()
                 .unwrap_or_default();
-            player.sprite.transform.position.x = state.position_x.to_f32().unwrap_or_default();
-            player.sprite.transform.position.y = state.position_y.to_f32().unwrap_or_default();
+            player.sprite.transform.position.x = state.position_x.into_f32();
+            player.sprite.transform.position.y = state.position_y.into_f32();
         }
     }
 }
@@ -627,10 +631,10 @@ inputs_bitstruct! {
 // their movement!
 #[derive(Debug, Default, Clone, Copy, PartialEq, Hash)]
 struct StateSnapshot {
-    position_x: Decimal,
-    position_y: Decimal,
-    velocity_x: Decimal,
-    velocity_y: Decimal,
+    position_x: Number,
+    position_y: Number,
+    velocity_x: Number,
+    velocity_y: Number,
 }
 
 struct PlayerCharacter {
@@ -673,13 +677,4 @@ impl Drawable for PlayerCharacter {
             .vertical_align(VerticalAlign::Bottom)
             .draw(context, graphics);
     }
-}
-
-fn f32_to_decimal(value: f32) -> Decimal {
-    decimal_force_precision(Decimal::from_f32(value).unwrap_or_default())
-}
-
-fn decimal_force_precision(mut value: Decimal) -> Decimal {
-    value.rescale(DECIMAL_PRECISION);
-    value
 }

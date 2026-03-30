@@ -7,8 +7,9 @@ use quaso::{
     game_state_custom_event, inputs_bitstruct,
     multiplayer::{
         GameMultiplayerChange, GameNetwork,
-        csp_ssr::{CspSsrAuthority, CspSsrGameState, CspSsrMultiplayer, CspSsrPlayerRole},
+        csp_ssr::{CspSsrAuthority, CspSsrMultiplayer, CspSsrPlayerRole},
         tcp::{TcpClientConnection, TcpServerConnection},
+        universal::{UniversalMultiplayerAuthority, UniversalMultiplayerGameState},
     },
     third_party::{
         fontdue::layout::{HorizontalAlign, VerticalAlign},
@@ -48,7 +49,7 @@ use quaso::{
             peer::{Peer, PeerId, TypedPeerRole},
             replication::primitives::RepF32,
         },
-        tehuti_timeline::{history::HistoryEvent, time::TimeStamp},
+        tehuti_timeline::time::TimeStamp,
         time::Duration,
         tracing::{debug, level_filters::LevelFilter},
         tracing_subscriber::{
@@ -395,11 +396,11 @@ impl GameState for State {
     }
 
     game_state_custom_event! {
-        trait(CspSsrGameState)
+        trait(UniversalMultiplayerGameState)
     }
 }
 
-impl CspSsrGameState for State {
+impl UniversalMultiplayerGameState for State {
     fn prepare_frame(&mut self, _context: GameContext, current_tick: TimeStamp) {
         for player in self.players.values_mut() {
             if let Some(inputs) = player.role.inputs_mut() {
@@ -440,9 +441,7 @@ impl CspSsrGameState for State {
                 } => {
                     input_history.set(current_tick, input);
                     let since = current_tick - CLIENT_SEND_INPUT_WINDOW;
-                    if let Some(event) =
-                        HistoryEvent::collect_history(input_history, since..=current_tick)
-                    {
+                    if let Some(event) = input_history.collect_history(since..=current_tick) {
                         input_sender.send(event.into()).ok();
                     }
                 }
@@ -451,11 +450,16 @@ impl CspSsrGameState for State {
         }
     }
 
-    fn server_find_input_divergence(
+    fn find_input_divergence(
         &mut self,
         _context: GameContext,
         _current_tick: TimeStamp,
+        authority: UniversalMultiplayerAuthority,
     ) -> Option<TimeStamp> {
+        if !authority.is_server() {
+            return None;
+        }
+
         let mut divergence = None;
 
         for player in self.players.values_mut() {
@@ -466,7 +470,7 @@ impl CspSsrGameState for State {
             } = &mut player.role
                 && let Some(Dispatch { message, .. }) = input_receiver.last()
             {
-                match message.apply_history_divergence(input_history) {
+                match input_history.apply_history_divergence(&message) {
                     Ok(div) => {
                         divergence = TimeStamp::possibly_oldest(divergence, div);
                     }
@@ -482,11 +486,16 @@ impl CspSsrGameState for State {
         divergence
     }
 
-    fn client_find_state_divergence(
+    fn find_state_divergence(
         &mut self,
         context: GameContext,
         current_tick: TimeStamp,
+        authority: UniversalMultiplayerAuthority,
     ) -> Option<TimeStamp> {
+        if !authority.is_client() {
+            return None;
+        }
+
         let delta_time = context
             .multiplayer::<Multiplayer>()
             .unwrap()
@@ -502,7 +511,7 @@ impl CspSsrGameState for State {
                     ..
                 } => {
                     if let Some(Dispatch { message, .. }) = state_receiver.last() {
-                        match message.apply_history_divergence(state_history) {
+                        match state_history.apply_history_divergence(&message) {
                             Ok(div) => {
                                 divergence = TimeStamp::possibly_oldest(divergence, div);
                             }
@@ -520,7 +529,7 @@ impl CspSsrGameState for State {
                     ..
                 } => {
                     if let Some(Dispatch { message, .. }) = state_receiver.last() {
-                        match message.apply_history_divergence(state_history) {
+                        match state_history.apply_history_divergence(&message) {
                             Ok(Some(divergence)) => {
                                 if let Err(error) =
                                     state_history.evolve(divergence, current_tick, |prev| {
@@ -555,7 +564,16 @@ impl CspSsrGameState for State {
         divergence
     }
 
-    fn server_send_state(&mut self, _context: GameContext, current_tick: TimeStamp) {
+    fn send_state(
+        &mut self,
+        _context: GameContext,
+        current_tick: TimeStamp,
+        authority: UniversalMultiplayerAuthority,
+    ) {
+        if !authority.is_server() {
+            return;
+        }
+
         for player in self.players.values() {
             let (sender, history) = match &player.role {
                 PlayerRole::ServerLocal {
@@ -573,7 +591,7 @@ impl CspSsrGameState for State {
                 }
             };
 
-            if let Some(event) = HistoryEvent::collect_snapshot(history, current_tick)
+            if let Some(event) = history.collect_snapshot(current_tick)
                 && let Err(error) = sender.send(event.into())
             {
                 debug!(

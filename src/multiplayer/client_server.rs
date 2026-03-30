@@ -11,6 +11,10 @@ use tehuti::{
 use tehuti_client_server::authority::{AuthorityUserData, PureAuthority};
 use tehuti_timeline::time::TimeStamp;
 
+pub struct ClientServerPrepareFrameEvent {
+    pub current_tick: TimeStamp,
+}
+
 pub struct ClientServerHandleInputsEvent {
     pub current_tick: TimeStamp,
 }
@@ -20,24 +24,41 @@ pub struct ClientServerTickEvent {
     pub delta_time: f32,
 }
 
+pub struct ClientServerCommitFrameEvent {
+    pub current_tick: TimeStamp,
+}
+
 pub trait ClientServerGameState {
     fn is(payload: &dyn Any) -> bool {
-        payload.is::<ClientServerHandleInputsEvent>() || payload.is::<ClientServerTickEvent>()
+        payload.is::<ClientServerPrepareFrameEvent>()
+            || payload.is::<ClientServerHandleInputsEvent>()
+            || payload.is::<ClientServerTickEvent>()
+            || payload.is::<ClientServerCommitFrameEvent>()
     }
 
     fn custom_event(&mut self, context: GameContext, payload: &mut dyn Any) {
-        if let Some(payload) = payload.downcast_ref::<ClientServerHandleInputsEvent>() {
+        if let Some(payload) = payload.downcast_ref::<ClientServerPrepareFrameEvent>() {
+            self.prepare_frame(context, payload.current_tick);
+        } else if let Some(payload) = payload.downcast_ref::<ClientServerHandleInputsEvent>() {
             self.handle_inputs(context, payload.current_tick);
         } else if let Some(payload) = payload.downcast_ref::<ClientServerTickEvent>() {
             self.tick(context, payload.current_tick, payload.delta_time);
+        } else if let Some(payload) = payload.downcast_ref::<ClientServerCommitFrameEvent>() {
+            self.commit_frame(context, payload.current_tick);
         }
     }
+
+    #[allow(unused_variables)]
+    fn prepare_frame(&mut self, context: GameContext, current_tick: TimeStamp) {}
 
     #[allow(unused_variables)]
     fn handle_inputs(&mut self, context: GameContext, current_tick: TimeStamp) {}
 
     #[allow(unused_variables)]
     fn tick(&mut self, context: GameContext, current_tick: TimeStamp, delta_time: f32) {}
+
+    #[allow(unused_variables)]
+    fn commit_frame(&mut self, context: GameContext, current_tick: TimeStamp) {}
 }
 
 pub struct ClientServerMultiplayer {
@@ -151,6 +172,13 @@ impl GameMultiplayer for ClientServerMultiplayer {
             let current_tick = self.current_tick;
             let mut context = unsafe { context.fork() };
             context.multiplayer = Some(self);
+            state.custom_event(context, &mut ClientServerPrepareFrameEvent { current_tick });
+        }
+
+        {
+            let current_tick = self.current_tick;
+            let mut context = unsafe { context.fork() };
+            context.multiplayer = Some(self);
             state.custom_event(context, &mut ClientServerHandleInputsEvent { current_tick });
         }
 
@@ -173,6 +201,13 @@ impl GameMultiplayer for ClientServerMultiplayer {
             );
             ticks_this_frame += 1;
             self.current_tick += 1;
+        }
+
+        {
+            let current_tick = self.current_tick;
+            let mut context = unsafe { context.fork() };
+            context.multiplayer = Some(self);
+            state.custom_event(context, &mut ClientServerCommitFrameEvent { current_tick });
         }
     }
 

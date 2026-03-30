@@ -7,8 +7,9 @@ use quaso::{
     game_state_custom_event,
     multiplayer::{
         GameMultiplayerChange, GameNetwork,
-        client_server::{ClientServerGameState, ClientServerMultiplayer},
+        client_server::ClientServerMultiplayer,
         tcp::{TcpClientConnection, TcpServerConnection},
+        universal::UniversalMultiplayerGameState,
     },
     third_party::{
         fontdue::layout::{HorizontalAlign, VerticalAlign},
@@ -401,11 +402,11 @@ impl GameState for State {
     }
 
     game_state_custom_event! {
-        trait(ClientServerGameState)
+        trait(UniversalMultiplayerGameState)
     }
 }
 
-impl ClientServerGameState for State {
+impl UniversalMultiplayerGameState for State {
     fn handle_inputs(&mut self, _context: GameContext, _current_tick: TimeStamp) {
         let [x, y] = self.movement.get();
         let movement = Vec2::new(x, y).try_normalized().unwrap_or_default() * SPEED;
@@ -420,7 +421,13 @@ impl ClientServerGameState for State {
         }
     }
 
-    fn tick(&mut self, _context: GameContext, _current_tick: TimeStamp, delta_time: f32) {
+    fn tick(
+        &mut self,
+        _context: GameContext,
+        _current_tick: TimeStamp,
+        delta_time: f32,
+        _resimulating: bool,
+    ) {
         for player in self.players.values_mut() {
             player.tick(delta_time);
         }

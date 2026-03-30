@@ -2,8 +2,10 @@ pub mod client_server;
 pub mod clock;
 pub mod csp_ssr;
 pub mod ggpo;
+pub mod local;
 pub mod rollback;
 pub mod tcp;
+pub mod universal;
 
 use crate::{context::GameContext, game::GameState};
 use std::{
@@ -188,24 +190,6 @@ pub trait GameMultiplayer {
     fn as_any(&self) -> &dyn Any;
 
     fn as_any_mut(&mut self) -> &mut dyn Any;
-}
-
-pub struct NoMultiplayer;
-
-impl GameMultiplayer for NoMultiplayer {
-    fn current_tick(&self) -> TimeStamp {
-        TimeStamp::default()
-    }
-
-    fn maintain(&mut self, _: &mut dyn GameState, _: GameContext, _: f32) {}
-
-    fn as_any(&self) -> &dyn Any {
-        self
-    }
-
-    fn as_any_mut(&mut self) -> &mut dyn Any {
-        self
-    }
 }
 
 #[macro_export]
