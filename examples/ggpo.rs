@@ -60,7 +60,7 @@ use quaso::{
     },
 };
 use serde::{Deserialize, Serialize};
-use std::{any::Any, collections::BTreeMap, error::Error, sync::Arc};
+use std::{collections::BTreeMap, error::Error, sync::Arc};
 use tehuti::fixed::Fixed;
 
 type Number = Fixed<6>;

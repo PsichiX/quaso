@@ -60,7 +60,7 @@ use quaso::{
     },
 };
 use serde::{Deserialize, Serialize};
-use std::{any::Any, collections::HashMap, error::Error, sync::Arc};
+use std::{collections::HashMap, error::Error, sync::Arc};
 
 const ADDRESS: &str = "127.0.0.1:12345";
 const AUTHORITY_CLOCK_CHANNEL: u64 = 10;

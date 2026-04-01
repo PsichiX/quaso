@@ -68,7 +68,7 @@ use quaso::{
         windowing::event::VirtualKeyCode,
     },
 };
-use std::{any::Any, collections::HashMap, error::Error, sync::Arc};
+use std::{collections::HashMap, error::Error, sync::Arc};
 
 const ADDRESS: &str = "127.0.0.1:12345";
 const PLAYER_ROLE: PeerRoleId = PeerRoleId::new(1);

@@ -134,7 +134,7 @@ macro_rules! game_state_custom_event {
     ($(
         $kind:ident ( $( $arg:tt ),* )
     ),*) => {
-        fn custom_event(&mut self, context: GameContext, payload: &mut dyn Any) {
+        fn custom_event(&mut self, context: GameContext, payload: &mut dyn std::any::Any) {
             $(
                 $crate::game_state_custom_event!(
                     @item (self, context, payload) => $kind ( $( $arg ),* )
