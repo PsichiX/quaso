@@ -266,6 +266,30 @@ macro_rules! inputs_bitstruct {
                 }
             )*
         }
+
+        impl std::fmt::Debug for $struct_name {
+            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                let mut debug_struct = f.debug_struct(stringify!($struct_name));
+                debug_struct.field("<INNER>", &self.inner());
+                $(
+                    debug_struct.field(stringify!($field_name), &self.$field_name());
+                )*
+                debug_struct.finish()
+            }
+        }
+
+        impl std::fmt::Display for $struct_name {
+            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                write!(f, "({}", self.inner())?;
+                $(
+                    if self.$field_name() {
+                        write!(f, ", {}", stringify!($field_name))?;
+                    }
+                )*
+                write!(f, ")")?;
+                Ok(())
+            }
+        }
     };
 }
 
@@ -273,7 +297,7 @@ macro_rules! inputs_bitstruct {
 mod tests {
     inputs_bitstruct! {
         #[repr(transparent)]
-        #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+        #[derive(Default, Clone, Copy, PartialEq, Eq)]
         struct InputSnapshot(u8) {
             left: 0,
             right: 1,
@@ -328,7 +352,15 @@ mod tests {
         assert!(!snapshot.up());
         assert!(!snapshot.down());
 
-        let snapshot = InputSnapshot::all();
+        let mut snapshot = InputSnapshot::all();
         assert_eq!(snapshot.inner(), 15);
+
+        snapshot.set_left(false);
+        snapshot.set_down(false);
+        assert_eq!(
+            &format!("{:?}", snapshot),
+            "InputSnapshot { <INNER>: 6, left: false, right: true, up: true, down: false }"
+        );
+        assert_eq!(&format!("{}", snapshot), "(6, right, up)");
     }
 }

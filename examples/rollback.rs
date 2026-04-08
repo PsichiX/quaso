@@ -666,7 +666,7 @@ impl UniversalMultiplayerGameState for State {
 // will deduce detailed changes between consecutive ticks.
 inputs_bitstruct! {
     #[repr(transparent)]
-    #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+    #[derive(Default, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
     struct InputSnapshot(u8) {
         left: 0,
         right: 1,
