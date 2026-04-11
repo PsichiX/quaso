@@ -504,6 +504,11 @@ fn process_node(
         .name()
         .map(sanitize_name)
         .unwrap_or_else(|| node.index().to_string());
+    let extras = node
+        .extras()
+        .as_ref()
+        .and_then(|extras| serde_json::from_str(extras.get()).ok())
+        .unwrap_or(serde_json::Value::Null);
     let (translation, rotation, scale) = node.transform().decomposed();
     let mesh_handle = node
         .mesh()
@@ -521,6 +526,7 @@ fn process_node(
             node_index: node.index(),
         },
         name,
+        extras,
         transform: Transform {
             position: translation.into(),
             orientation: Quaternion::from_vec4(rotation.into()).normalized(),

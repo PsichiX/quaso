@@ -1,9 +1,10 @@
 use quaso::{
     GameLauncher,
     animation::gltf::{
-        GltfAnimationBlendSpace, GltfAnimationBlendSpacePoint, GltfAnimationTarget,
+        GltfAnimationBlendSpace, GltfAnimationBlendSpacePoint, GltfAnimationTarget, GltfNodeId,
         GltfRenderablesOptions, GltfSceneAnimation, GltfSceneAttribute, GltfSceneInstance,
-        GltfSceneTemplate, GltfSceneTransform,
+        GltfSceneInstantiateOptions, GltfSceneRenderable, GltfSceneRenderables, GltfSceneTemplate,
+        GltfSceneTransform,
     },
     assets::{make_directory_database, shader::ShaderAsset},
     config::Config,
@@ -11,10 +12,12 @@ use quaso::{
     coroutine::{async_game_context, async_wait_for_asset},
     game::{GameInstance, GameState, GameStateChange},
     third_party::{
-        nodio::query::Related,
+        keket::database::AssetDatabase,
+        nodio::{AnyIndex, graph::Graph, query::Related},
+        spitfire_core::Triangle,
         spitfire_draw::{
-            utils::Drawable,
-            {sprite::Sprite, utils::ShaderRef},
+            sprite::Sprite,
+            utils::{Drawable, ShaderRef, Vertex},
         },
         spitfire_glow::{
             graphics::{CameraScaling, Shader},
@@ -24,10 +27,17 @@ use quaso::{
             CardinalInputCombinator, InputActionRef, InputConsume, InputMapping, VirtualAction,
             VirtualKeyCode,
         },
-        vek::{Rgba, Vec2, Vec3},
+        vek::{Aabr, Mat4, Rgba, Vec2, Vec3},
     },
 };
-use std::{error::Error, pin::Pin};
+use serde_json::Value;
+use std::{collections::HashMap, error::Error, ops::Range, pin::Pin};
+
+const HURTBOX_COLOR: [f32; 4] = [0.5, 0.5, 1.0, 0.5];
+const HITBOX_COLOR: [f32; 4] = [1.0, 0.0, 0.0, 0.5];
+
+struct HitBox;
+struct HurtBox;
 
 fn main() -> Result<(), Box<dyn Error>> {
     GameLauncher::new(GameInstance::new(Preloader).setup_assets(|assets| {
@@ -80,10 +90,7 @@ impl GameState for Preloader {
             )
             .unwrap();
 
-        let handle = context
-            .assets
-            .ensure("gltf://stickerman.glb?binary")
-            .unwrap();
+        let handle = context.assets.ensure("gltf://stickman.glb?binary").unwrap();
 
         Box::pin(async move {
             println!("Waiting for GLTF asset to load...");
@@ -104,18 +111,21 @@ impl GameState for Preloader {
                 let context = async_game_context().await.unwrap();
                 let scene = context
                     .assets
-                    .find("gltf-scene://stickerman.glb/Scene")
+                    .find("gltf-scene://stickman.glb/Scene")
                     .unwrap();
 
                 let instance = scene
                     .access::<&GltfSceneTemplate>(context.assets)
-                    .instantiate(context.assets)
+                    .instantiate_with_options(
+                        context.assets,
+                        &GltfSceneInstantiateOptions::default().extract_extras(extract_extras),
+                    )
                     .with_animation(
                         "idle",
                         GltfSceneAnimation::new(
                             context
                                 .assets
-                                .find("gltf-anim://stickerman.glb/TPose")
+                                .find("gltf-anim://stickman.glb/TPose")
                                 .unwrap(),
                             context.assets,
                         )
@@ -129,7 +139,7 @@ impl GameState for Preloader {
                         GltfSceneAnimation::new(
                             context
                                 .assets
-                                .find("gltf-anim://stickerman.glb/Walk")
+                                .find("gltf-anim://stickman.glb/Walk")
                                 .unwrap(),
                             context.assets,
                         )
@@ -141,10 +151,7 @@ impl GameState for Preloader {
                     .with_animation(
                         "run",
                         GltfSceneAnimation::new(
-                            context
-                                .assets
-                                .find("gltf-anim://stickerman.glb/Run")
-                                .unwrap(),
+                            context.assets.find("gltf-anim://stickman.glb/Run").unwrap(),
                             context.assets,
                         )
                         .unwrap()
@@ -155,10 +162,7 @@ impl GameState for Preloader {
                     .with_animation(
                         "run",
                         GltfSceneAnimation::new(
-                            context
-                                .assets
-                                .find("gltf-anim://stickerman.glb/Run")
-                                .unwrap(),
+                            context.assets.find("gltf-anim://stickman.glb/Run").unwrap(),
                             context.assets,
                         )
                         .unwrap()
@@ -171,7 +175,7 @@ impl GameState for Preloader {
                         GltfSceneAnimation::new(
                             context
                                 .assets
-                                .find("gltf-anim://stickerman.glb/Crouch")
+                                .find("gltf-anim://stickman.glb/Crouch")
                                 .unwrap(),
                             context.assets,
                         )
@@ -185,7 +189,7 @@ impl GameState for Preloader {
                         GltfSceneAnimation::new(
                             context
                                 .assets
-                                .find("gltf-anim://stickerman.glb/CrouchWalk")
+                                .find("gltf-anim://stickman.glb/CrouchWalk")
                                 .unwrap(),
                             context.assets,
                         )
@@ -199,7 +203,7 @@ impl GameState for Preloader {
                         GltfSceneAnimation::new(
                             context
                                 .assets
-                                .find("gltf-anim://stickerman.glb/Jump")
+                                .find("gltf-anim://stickman.glb/Jump")
                                 .unwrap(),
                             context.assets,
                         )
@@ -213,7 +217,7 @@ impl GameState for Preloader {
                         GltfSceneAnimation::new(
                             context
                                 .assets
-                                .find("gltf-anim://stickerman.glb/Falling")
+                                .find("gltf-anim://stickman.glb/Falling")
                                 .unwrap(),
                             context.assets,
                         )
@@ -359,7 +363,11 @@ impl GameState for State {
             .instance
             .build_renderables(
                 context.assets,
-                &GltfRenderablesOptions::default().sort_triangles_by_max_positive_z(),
+                &GltfRenderablesOptions::default()
+                    .sort_triangles_by_max_positive_z()
+                    .renderable_modifier(renderable_modifier)
+                    .custom_renderables(custom_renderables)
+                    .axes([0, 2]),
             )
             .unwrap();
         renderables.draw(context.draw, context.graphics);
@@ -377,5 +385,129 @@ impl GameState for State {
                 .blending(GlowBlending::Alpha)
                 .draw(context.draw, context.graphics);
         }
+    }
+}
+
+fn extract_extras(value: &Value, graph: &mut Graph, index: AnyIndex) {
+    if let Some(boxtype) = value.get("boxtype") {
+        match boxtype.as_str() {
+            Some("hurt") => {
+                let attr = graph.insert(HurtBox);
+                graph.relate::<GltfSceneAttribute>(index, attr);
+            }
+            Some("hit") => {
+                let attr = graph.insert(HitBox);
+                graph.relate::<GltfSceneAttribute>(index, attr);
+            }
+            _ => {}
+        }
+    }
+}
+
+fn renderable_modifier(graph: &Graph, index: AnyIndex, renderable: &mut GltfSceneRenderable) {
+    if graph
+        .query::<Related<GltfSceneAttribute, &HitBox>>(index)
+        .next()
+        .is_some()
+    {
+        renderable.shader = Some(ShaderRef::name("color"));
+        renderable.main_texture = None;
+        renderable.blending = GlowBlending::None;
+        for vertex in &mut renderable.vertices {
+            vertex.color = HITBOX_COLOR;
+            vertex.uv = [0.0, 0.0, 0.0];
+        }
+    }
+
+    if graph
+        .query::<Related<GltfSceneAttribute, &HurtBox>>(index)
+        .next()
+        .is_some()
+    {
+        renderable.shader = Some(ShaderRef::name("color"));
+        renderable.main_texture = None;
+        renderable.blending = GlowBlending::Alpha;
+        for vertex in &mut renderable.vertices {
+            vertex.color = HURTBOX_COLOR;
+            vertex.uv = [0.0, 0.0, 0.0];
+        }
+    }
+}
+
+fn custom_renderables(
+    graph: &Graph,
+    index: AnyIndex,
+    _: &AssetDatabase,
+    _: &GltfRenderablesOptions,
+    _: &HashMap<GltfNodeId, Mat4<f32>>,
+    renderables: &mut GltfSceneRenderables,
+    range: Range<usize>,
+) -> Result<(), Box<dyn Error>> {
+    if graph
+        .query::<Related<GltfSceneAttribute, &HitBox>>(index)
+        .next()
+        .is_some()
+    {
+        custom_renderable(renderables, range.clone(), HITBOX_COLOR);
+    }
+
+    if graph
+        .query::<Related<GltfSceneAttribute, &HurtBox>>(index)
+        .next()
+        .is_some()
+    {
+        custom_renderable(renderables, range, HURTBOX_COLOR);
+    }
+
+    Ok(())
+}
+
+fn custom_renderable(renderables: &mut GltfSceneRenderables, range: Range<usize>, color: [f32; 4]) {
+    let aabr = renderables.renderables[range.clone()]
+        .iter()
+        .flat_map(|renderable| {
+            renderable
+                .vertices
+                .iter()
+                .map(|vertex| Vec2::from(vertex.position))
+        })
+        .fold(Option::<Aabr<f32>>::None, |aabr, position| {
+            if let Some(aabr) = aabr {
+                Some(aabr.expanded_to_contain_point(position))
+            } else {
+                Some(Aabr::new_empty(position))
+            }
+        });
+
+    if let Some(aabr) = aabr {
+        renderables.renderables.push(GltfSceneRenderable {
+            shader: Some(ShaderRef::name("color")),
+            main_texture: None,
+            blending: GlowBlending::None,
+            wireframe: true,
+            triangles: vec![Triangle { a: 0, b: 1, c: 2 }, Triangle { a: 2, b: 3, c: 0 }],
+            vertices: vec![
+                Vertex {
+                    position: [aabr.min.x, aabr.min.y],
+                    uv: [0.0, 0.0, 0.0],
+                    color,
+                },
+                Vertex {
+                    position: [aabr.max.x, aabr.min.y],
+                    uv: [0.0, 0.0, 0.0],
+                    color,
+                },
+                Vertex {
+                    position: [aabr.max.x, aabr.max.y],
+                    uv: [0.0, 0.0, 0.0],
+                    color,
+                },
+                Vertex {
+                    position: [aabr.min.x, aabr.max.y],
+                    uv: [0.0, 0.0, 0.0],
+                    color,
+                },
+            ],
+        });
     }
 }
