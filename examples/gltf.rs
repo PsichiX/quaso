@@ -412,7 +412,7 @@ fn renderable_modifier(graph: &Graph, index: AnyIndex, renderable: &mut GltfScen
     {
         renderable.shader = Some(ShaderRef::name("color"));
         renderable.main_texture = None;
-        renderable.blending = GlowBlending::None;
+        renderable.blending = GlowBlending::Alpha;
         for vertex in &mut renderable.vertices {
             vertex.color = HITBOX_COLOR;
             vertex.uv = [0.0, 0.0, 0.0];
@@ -483,7 +483,7 @@ fn custom_renderable(renderables: &mut GltfSceneRenderables, range: Range<usize>
         renderables.renderables.push(GltfSceneRenderable {
             shader: Some(ShaderRef::name("color")),
             main_texture: None,
-            blending: GlowBlending::None,
+            blending: GlowBlending::Alpha,
             wireframe: true,
             triangles: vec![Triangle { a: 0, b: 1, c: 2 }, Triangle { a: 2, b: 3, c: 0 }],
             vertices: vec![
