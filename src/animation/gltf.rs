@@ -482,6 +482,55 @@ impl GltfSceneAnimation {
             .iter()
             .filter_map(move |&index| self.events_timeline.get(index))
     }
+
+    pub fn sanitize_time(&mut self) {
+        self.cycle_completed = false;
+        if self.time < 0.0 {
+            self.cycle_completed = true;
+            if self.looped {
+                self.time = self.duration + (self.time % self.duration);
+            } else {
+                self.time = 0.0;
+                self.playing = false;
+            }
+        } else if self.time > self.duration {
+            self.cycle_completed = true;
+            if self.looped {
+                self.time %= self.duration;
+            } else {
+                self.time = self.duration;
+                self.playing = false;
+            }
+        }
+    }
+
+    pub fn update(&mut self, delta_time: f32, forced: bool) {
+        self.events_passed.clear();
+        if !forced && !self.playing {
+            return;
+        }
+        let previous_time = self.time;
+        self.time += delta_time * self.speed;
+        self.events_passed = self
+            .events_timeline
+            .iter()
+            .enumerate()
+            .filter_map(|(index, event)| {
+                let (frame_from, frame_to) =
+                    (previous_time.min(self.time), previous_time.max(self.time));
+                let event_from = event.time;
+                let event_end = event.time + event.duration;
+                let (event_from, event_end) =
+                    (event_from.min(event_end), event_from.max(event_end));
+                if frame_from <= event_end && frame_to >= event_from {
+                    Some(index)
+                } else {
+                    None
+                }
+            })
+            .collect();
+        self.sanitize_time();
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -679,17 +728,18 @@ impl GltfAnimationNode for GltfAnimationTransition {
                 } else {
                     0.0
                 };
-                let change_speed = layer
-                    .change_speed
-                    .unwrap_or(self.change_speed.unwrap_or(f32::MAX));
-                if (layer.current_weight - target_weight).abs() < f32::EPSILON {
-                    layer.current_weight = target_weight;
-                } else if layer.current_weight < target_weight {
-                    layer.current_weight =
-                        (layer.current_weight + change_speed * delta_time).clamp(0.0, 1.0);
+                if let Some(change_speed) = layer.change_speed.or(self.change_speed) {
+                    if (layer.current_weight - target_weight).abs() < f32::EPSILON {
+                        layer.current_weight = target_weight;
+                    } else if layer.current_weight < target_weight {
+                        layer.current_weight =
+                            (layer.current_weight + change_speed * delta_time).clamp(0.0, 1.0);
+                    } else {
+                        layer.current_weight =
+                            (layer.current_weight - change_speed * delta_time).clamp(0.0, 1.0);
+                    }
                 } else {
-                    layer.current_weight =
-                        (layer.current_weight - change_speed * delta_time).clamp(0.0, 1.0);
+                    layer.current_weight = target_weight;
                 }
             }
         }
@@ -1030,50 +1080,7 @@ impl GltfSceneInstance {
     pub fn update_animations(&mut self, delta_time: f32) {
         for handle in self.animations.values() {
             if let Some(mut animation) = handle.write() {
-                animation.cycle_completed = false;
-                animation.events_passed.clear();
-                if !animation.playing {
-                    continue;
-                }
-                let previous_time = animation.time;
-                animation.time += delta_time * animation.speed;
-                animation.events_passed = animation
-                    .events_timeline
-                    .iter()
-                    .enumerate()
-                    .filter_map(|(index, event)| {
-                        let (frame_from, frame_to) = (
-                            previous_time.min(animation.time),
-                            previous_time.max(animation.time),
-                        );
-                        let event_from = event.time;
-                        let event_end = event.time + event.duration;
-                        let (event_from, event_end) =
-                            (event_from.min(event_end), event_from.max(event_end));
-                        if frame_from <= event_end && frame_to >= event_from {
-                            Some(index)
-                        } else {
-                            None
-                        }
-                    })
-                    .collect();
-                if animation.time < 0.0 {
-                    animation.cycle_completed = true;
-                    if animation.looped {
-                        animation.time = animation.duration + (animation.time % animation.duration);
-                    } else {
-                        animation.time = 0.0;
-                        animation.playing = false;
-                    }
-                } else if animation.time > animation.duration {
-                    animation.cycle_completed = true;
-                    if animation.looped {
-                        animation.time %= animation.duration;
-                    } else {
-                        animation.time = animation.duration;
-                        animation.playing = false;
-                    }
-                }
+                animation.update(delta_time, false);
             }
         }
         if let Some(mut animation_node) = self.animation_node.take() {

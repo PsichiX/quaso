@@ -1,9 +1,10 @@
 use quaso::{
     GameLauncher,
     animation::gltf::{
-        GltfAnimationBlendSpace, GltfAnimationBlendSpacePoint, GltfAnimationTarget, GltfNodeId,
-        GltfRenderablesOptions, GltfSceneAnimation, GltfSceneAttribute, GltfSceneInstance,
-        GltfSceneInstantiateOptions, GltfSceneRenderable, GltfSceneRenderables, GltfSceneTemplate,
+        GltfAnimationTarget, GltfAnimationTransition, GltfAnimationTransitionController,
+        GltfAnimationTransitionLayer, GltfNodeId, GltfRenderablesOptions, GltfSceneAnimation,
+        GltfSceneAttribute, GltfSceneInstance, GltfSceneInstantiateOptions, GltfSceneRenderable,
+        GltfSceneRenderables, GltfSceneTemplate,
     },
     assets::{make_directory_database, shader::ShaderAsset},
     config::Config,
@@ -20,8 +21,7 @@ use quaso::{
             renderer::GlowBlending,
         },
         spitfire_input::{
-            CardinalInputCombinator, InputActionRef, InputConsume, InputMapping, VirtualAction,
-            VirtualKeyCode,
+            InputActionRef, InputConsume, InputMapping, VirtualAction, VirtualKeyCode,
         },
         vek::{Aabr, Mat4, Vec2, Vec3},
     },
@@ -31,6 +31,7 @@ use std::{collections::HashMap, error::Error, ops::Range, pin::Pin};
 
 const HURTBOX_COLOR: [f32; 4] = [0.5, 0.5, 1.0, 0.5];
 const HITBOX_COLOR: [f32; 4] = [1.0, 0.0, 0.0, 0.5];
+const STEP_DELTA_TIME: f32 = 0.1;
 
 struct HitBox;
 struct HurtBox;
@@ -39,7 +40,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     GameLauncher::new(GameInstance::new(Preloader).setup_assets(|assets| {
         *assets = make_directory_database("./resources/").unwrap();
     }))
-    .title("GLTF")
+    .title("GLTF - Step animation")
     .config(Config::load_from_file("./resources/GameConfig.toml")?)
     .run();
     Ok(())
@@ -110,6 +111,7 @@ impl GameState for Preloader {
                     .find("gltf-scene://stickman.glb/Scene")
                     .unwrap();
 
+                let controller = GltfAnimationTransitionController::default();
                 let instance = scene
                     .access::<&GltfSceneTemplate>(context.assets)
                     .instantiate_with_options(
@@ -155,109 +157,20 @@ impl GameState for Preloader {
                         .playing(true)
                         .looped(true),
                     )
-                    .with_animation(
-                        "crouch",
-                        GltfSceneAnimation::new(
-                            context
-                                .assets
-                                .find("gltf-anim://stickman.glb/Crouch")
-                                .unwrap(),
-                            context.assets,
-                        )
-                        .unwrap()
-                        .weight(0.0)
-                        .playing(true)
-                        .looped(true),
-                    )
-                    .with_animation(
-                        "crouch-walk",
-                        GltfSceneAnimation::new(
-                            context
-                                .assets
-                                .find("gltf-anim://stickman.glb/CrouchWalk")
-                                .unwrap(),
-                            context.assets,
-                        )
-                        .unwrap()
-                        .weight(0.0)
-                        .playing(true)
-                        .looped(true),
-                    )
-                    .with_animation(
-                        "jump",
-                        GltfSceneAnimation::new(
-                            context
-                                .assets
-                                .find("gltf-anim://stickman.glb/Jump")
-                                .unwrap(),
-                            context.assets,
-                        )
-                        .unwrap()
-                        .weight(0.0)
-                        .playing(true)
-                        .looped(true),
-                    )
-                    .with_animation(
-                        "falling",
-                        GltfSceneAnimation::new(
-                            context
-                                .assets
-                                .find("gltf-anim://stickman.glb/Falling")
-                                .unwrap(),
-                            context.assets,
-                        )
-                        .unwrap()
-                        .weight(0.0)
-                        .playing(true)
-                        .looped(true),
-                    )
-                    .with_parameter("move-x", Default::default())
-                    .with_parameter("move-y", Default::default())
                     .with_animation_node(
-                        GltfAnimationBlendSpace::new(["move-y".into()])
-                            .point(GltfAnimationBlendSpacePoint::new(
-                                [-1.0],
-                                GltfAnimationTarget::new("falling"),
+                        GltfAnimationTransition::new(controller.clone())
+                            .default_layer("idle")
+                            .layer(GltfAnimationTransitionLayer::new(
+                                "idle",
+                                GltfAnimationTarget::new("idle"),
                             ))
-                            .point(GltfAnimationBlendSpacePoint::new(
-                                [0.0],
-                                GltfAnimationBlendSpace::new(["move-x".into()])
-                                    .point(GltfAnimationBlendSpacePoint::new(
-                                        [0.0],
-                                        GltfAnimationTarget::new("idle"),
-                                    ))
-                                    .point(GltfAnimationBlendSpacePoint::new(
-                                        [-1.0],
-                                        GltfAnimationTarget::new("walk"),
-                                    ))
-                                    .point(GltfAnimationBlendSpacePoint::new(
-                                        [-2.0],
-                                        GltfAnimationTarget::new("run"),
-                                    ))
-                                    .point(GltfAnimationBlendSpacePoint::new(
-                                        [1.0],
-                                        GltfAnimationTarget::new("walk"),
-                                    ))
-                                    .point(GltfAnimationBlendSpacePoint::new(
-                                        [2.0],
-                                        GltfAnimationTarget::new("run"),
-                                    )),
+                            .layer(GltfAnimationTransitionLayer::new(
+                                "walk",
+                                GltfAnimationTarget::new("walk"),
                             ))
-                            .point(GltfAnimationBlendSpacePoint::new(
-                                [1.0],
-                                GltfAnimationBlendSpace::new(["move-x".into()])
-                                    .point(GltfAnimationBlendSpacePoint::new(
-                                        [0.0],
-                                        GltfAnimationTarget::new("crouch"),
-                                    ))
-                                    .point(GltfAnimationBlendSpacePoint::new(
-                                        [-1.0],
-                                        GltfAnimationTarget::new("crouch-walk"),
-                                    ))
-                                    .point(GltfAnimationBlendSpacePoint::new(
-                                        [1.0],
-                                        GltfAnimationTarget::new("crouch-walk"),
-                                    )),
+                            .layer(GltfAnimationTransitionLayer::new(
+                                "run",
+                                GltfAnimationTarget::new("run"),
                             )),
                     );
 
@@ -276,10 +189,15 @@ impl GameState for Preloader {
                     true
                 });
                 *context.state_change = GameStateChange::Swap(Box::new(State {
+                    controller,
                     instance,
-                    movement: Default::default(),
-                    delayed_movement: Default::default(),
-                    sprint: InputActionRef::default(),
+                    idle: InputActionRef::default(),
+                    walk: InputActionRef::default(),
+                    run: InputActionRef::default(),
+                    toggle: InputActionRef::default(),
+                    prev: InputActionRef::default(),
+                    next: InputActionRef::default(),
+                    playing: true,
                 }));
             }
         })
@@ -287,31 +205,45 @@ impl GameState for Preloader {
 }
 
 struct State {
+    controller: GltfAnimationTransitionController,
     instance: GltfSceneInstance,
-    movement: CardinalInputCombinator,
-    sprint: InputActionRef,
-    delayed_movement: [f32; 2],
+    idle: InputActionRef,
+    walk: InputActionRef,
+    run: InputActionRef,
+    toggle: InputActionRef,
+    prev: InputActionRef,
+    next: InputActionRef,
+    playing: bool,
 }
 
 impl GameState for State {
     fn enter(&mut self, context: GameContext) {
-        let left = InputActionRef::default();
-        let right = InputActionRef::default();
-        let up = InputActionRef::default();
-        let down = InputActionRef::default();
-        self.movement =
-            CardinalInputCombinator::new(left.clone(), right.clone(), up.clone(), down.clone());
-
         context.input.push_mapping(
             InputMapping::default()
                 .consume(InputConsume::Hit)
-                .action(VirtualAction::KeyButton(VirtualKeyCode::W), up)
-                .action(VirtualAction::KeyButton(VirtualKeyCode::S), down)
-                .action(VirtualAction::KeyButton(VirtualKeyCode::A), left)
-                .action(VirtualAction::KeyButton(VirtualKeyCode::D), right)
                 .action(
-                    VirtualAction::KeyButton(VirtualKeyCode::LShift),
-                    self.sprint.clone(),
+                    VirtualAction::KeyButton(VirtualKeyCode::Key1),
+                    self.idle.clone(),
+                )
+                .action(
+                    VirtualAction::KeyButton(VirtualKeyCode::Key2),
+                    self.walk.clone(),
+                )
+                .action(
+                    VirtualAction::KeyButton(VirtualKeyCode::Key3),
+                    self.run.clone(),
+                )
+                .action(
+                    VirtualAction::KeyButton(VirtualKeyCode::W),
+                    self.toggle.clone(),
+                )
+                .action(
+                    VirtualAction::KeyButton(VirtualKeyCode::Q),
+                    self.prev.clone(),
+                )
+                .action(
+                    VirtualAction::KeyButton(VirtualKeyCode::E),
+                    self.next.clone(),
                 ),
         );
     }
@@ -321,26 +253,42 @@ impl GameState for State {
     }
 
     fn fixed_update(&mut self, context: GameContext, delta_time: f32) {
-        let mut movement = self.movement.get();
-        let sprint = if self.sprint.get().is_hold() {
-            2.0
-        } else {
-            1.0
-        };
-        movement[0] *= sprint;
-        self.delayed_movement =
-            std::array::from_fn(|i| self.delayed_movement[i] * 0.9 + movement[i] * 0.1);
+        if self.idle.get().is_pressed() {
+            self.controller.change_to(["idle"]);
+        } else if self.walk.get().is_pressed() {
+            self.controller.change_to(["walk"]);
+        } else if self.run.get().is_pressed() {
+            self.controller.change_to(["run"]);
+        } else if self.toggle.get().is_pressed() {
+            self.playing = !self.playing;
+            for (_, animation) in self.instance.animations() {
+                if let Some(mut animation) = animation.write() {
+                    animation.playing = self.playing;
+                }
+            }
+        } else if self.prev.get().is_pressed() {
+            for (_, animation) in self.instance.animations() {
+                if let Some(mut animation) = animation.write() {
+                    animation.time -= STEP_DELTA_TIME;
+                    animation.sanitize_time();
+                }
+            }
+        } else if self.next.get().is_pressed() {
+            for (_, animation) in self.instance.animations() {
+                if let Some(mut animation) = animation.write() {
+                    animation.time += STEP_DELTA_TIME;
+                    animation.sanitize_time();
+                }
+            }
+        }
 
-        self.instance
-            .parameter("move-x")
-            .unwrap()
-            .set(self.delayed_movement[0]);
-        self.instance
-            .parameter("move-y")
-            .unwrap()
-            .set(self.delayed_movement[1]);
-        self.instance
-            .update_and_apply_animations(delta_time, context.assets);
+        if self.playing {
+            self.instance
+                .update_and_apply_animations(delta_time, context.assets);
+        } else {
+            self.instance
+                .update_and_apply_animations(0.0, context.assets);
+        }
     }
 
     fn draw(&mut self, context: GameContext) {
