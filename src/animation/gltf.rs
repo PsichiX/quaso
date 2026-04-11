@@ -1480,6 +1480,9 @@ impl GltfSceneInstance {
                     &mut result,
                 )?;
             }
+            if let Some(sorting_fn) = options.renderable_sorting {
+                result.renderables.sort_by(sorting_fn);
+            }
         }
         if options.bones {
             for root_index in self.roots() {
@@ -1565,22 +1568,7 @@ impl GltfSceneInstance {
                     skin.and_then(|skin| skin.handle().access_checked::<&GltfSkin>(database));
 
                 for primitive in &mesh_asset.primitives {
-                    let mut triangles = primitive.triangles.clone();
-                    if let Some(sorting_fn) = options.triangle_sorting {
-                        triangles.sort_by(|a, b| {
-                            let a_vertices = [
-                                &primitive.vertices[a.a as usize].position,
-                                &primitive.vertices[a.b as usize].position,
-                                &primitive.vertices[a.c as usize].position,
-                            ];
-                            let b_vertices = [
-                                &primitive.vertices[b.a as usize].position,
-                                &primitive.vertices[b.b as usize].position,
-                                &primitive.vertices[b.c as usize].position,
-                            ];
-                            sorting_fn(a_vertices, b_vertices)
-                        });
-                    }
+                    let triangles = primitive.triangles.clone();
                     let vertices = primitive
                         .vertices
                         .iter()
@@ -1635,6 +1623,21 @@ impl GltfSceneInstance {
                         vertices,
                     };
                     (options.renderable_modifier)(&self.graph, index, &mut renderable);
+                    if let Some(sorting_fn) = options.triangle_sorting {
+                        renderable.triangles.sort_by(|a, b| {
+                            let a_vertices = [
+                                &primitive.vertices[a.a as usize].position,
+                                &primitive.vertices[a.b as usize].position,
+                                &primitive.vertices[a.c as usize].position,
+                            ];
+                            let b_vertices = [
+                                &primitive.vertices[b.a as usize].position,
+                                &primitive.vertices[b.b as usize].position,
+                                &primitive.vertices[b.c as usize].position,
+                            ];
+                            sorting_fn(a_vertices, b_vertices)
+                        });
+                    }
                     renderables.renderables.push(renderable);
                 }
             }
@@ -1755,7 +1758,8 @@ impl GameObject for GltfSceneInstance {
     }
 }
 
-pub type GltfRenderablesSorting = fn([&Vec3<f32>; 3], [&Vec3<f32>; 3]) -> Ordering;
+pub type GltfTriangleSorting = fn([&Vec3<f32>; 3], [&Vec3<f32>; 3]) -> Ordering;
+pub type GltfRenderableSorting = fn(&GltfSceneRenderable, &GltfSceneRenderable) -> Ordering;
 pub type GltfRenderablesFilter = fn(&Graph, AnyIndex) -> bool;
 pub type GltfRenderableModifier = fn(&Graph, AnyIndex, &mut GltfSceneRenderable);
 pub type GltfCustomRenderables = fn(
@@ -1775,7 +1779,8 @@ pub struct GltfRenderablesOptions {
     pub shader: Option<ShaderRef>,
     pub axes: [usize; 2],
     pub flip_axes: [bool; 2],
-    pub triangle_sorting: Option<GltfRenderablesSorting>,
+    pub triangle_sorting: Option<GltfTriangleSorting>,
+    pub renderable_sorting: Option<GltfRenderableSorting>,
     pub bones_shader: Option<ShaderRef>,
     pub bones_color: Rgba<f32>,
     pub bones_thickness: f32,
@@ -1793,6 +1798,7 @@ impl Default for GltfRenderablesOptions {
             axes: [0, 1],
             flip_axes: [false, false],
             triangle_sorting: None,
+            renderable_sorting: None,
             bones_shader: None,
             bones_color: Rgba::magenta(),
             bones_thickness: 0.0,
@@ -1829,7 +1835,7 @@ impl GltfRenderablesOptions {
         self
     }
 
-    pub fn triangle_sorting(mut self, sorting: GltfRenderablesSorting) -> Self {
+    pub fn triangle_sorting(mut self, sorting: GltfTriangleSorting) -> Self {
         self.triangle_sorting = Some(sorting);
         self
     }
@@ -1838,6 +1844,28 @@ impl GltfRenderablesOptions {
         self.triangle_sorting = Some(|a, b| {
             let a = a[0].z.max(a[1].z).max(a[2].z);
             let b = b[0].z.max(b[1].z).max(b[2].z);
+            a.partial_cmp(&b).unwrap_or(Ordering::Equal)
+        });
+        self
+    }
+
+    pub fn renderable_sorting(mut self, sorting: GltfRenderableSorting) -> Self {
+        self.renderable_sorting = Some(sorting);
+        self
+    }
+
+    pub fn sort_renderables_by_max_positive_z(mut self) -> Self {
+        self.renderable_sorting = Some(|a, b| {
+            let a = a
+                .vertices
+                .iter()
+                .map(|v| v.position[1])
+                .fold(f32::NEG_INFINITY, f32::max);
+            let b = b
+                .vertices
+                .iter()
+                .map(|v| v.position[1])
+                .fold(f32::NEG_INFINITY, f32::max);
             a.partial_cmp(&b).unwrap_or(Ordering::Equal)
         });
         self

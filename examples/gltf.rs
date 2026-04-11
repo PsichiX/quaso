@@ -4,7 +4,6 @@ use quaso::{
         GltfAnimationBlendSpace, GltfAnimationBlendSpacePoint, GltfAnimationTarget, GltfNodeId,
         GltfRenderablesOptions, GltfSceneAnimation, GltfSceneAttribute, GltfSceneInstance,
         GltfSceneInstantiateOptions, GltfSceneRenderable, GltfSceneRenderables, GltfSceneTemplate,
-        GltfSceneTransform,
     },
     assets::{make_directory_database, shader::ShaderAsset},
     config::Config,
@@ -15,10 +14,7 @@ use quaso::{
         keket::database::AssetDatabase,
         nodio::{AnyIndex, graph::Graph, query::Related},
         spitfire_core::Triangle,
-        spitfire_draw::{
-            sprite::Sprite,
-            utils::{Drawable, ShaderRef, Vertex},
-        },
+        spitfire_draw::utils::{Drawable, ShaderRef, Vertex},
         spitfire_glow::{
             graphics::{CameraScaling, Shader},
             renderer::GlowBlending,
@@ -27,7 +23,7 @@ use quaso::{
             CardinalInputCombinator, InputActionRef, InputConsume, InputMapping, VirtualAction,
             VirtualKeyCode,
         },
-        vek::{Aabr, Mat4, Rgba, Vec2, Vec3},
+        vek::{Aabr, Mat4, Vec2, Vec3},
     },
 };
 use serde_json::Value;
@@ -365,26 +361,13 @@ impl GameState for State {
                 context.assets,
                 &GltfRenderablesOptions::default()
                     .sort_triangles_by_max_positive_z()
+                    .sort_renderables_by_max_positive_z()
                     .renderable_modifier(renderable_modifier)
                     .custom_renderables(custom_renderables)
                     .axes([0, 2]),
             )
             .unwrap();
         renderables.draw(context.draw, context.graphics);
-
-        if let Some(transform) = self
-            .instance
-            .query_bone_by_name::<Related<GltfSceneAttribute, &GltfSceneTransform>>("Bone.012")
-        {
-            Sprite::default()
-                .shader(ShaderRef::name("color"))
-                .position(transform.world_matrix().mul_point(Vec2::zero()))
-                .pivot(0.5.into())
-                .size(0.1.into())
-                .tint(Rgba::new(1.0, 0.0, 0.0, 0.5))
-                .blending(GlowBlending::Alpha)
-                .draw(context.draw, context.graphics);
-        }
     }
 }
 
