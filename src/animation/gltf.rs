@@ -427,12 +427,11 @@ impl GltfSceneAnimation {
     }
 
     pub fn has_completed(&self) -> bool {
-        !self.looped
-            && if self.speed >= 0.0 {
-                self.time >= self.duration
-            } else {
-                self.time <= 0.0
-            }
+        if !self.looped && self.speed >= 0.0 {
+            self.time >= self.duration
+        } else {
+            self.time <= 0.0
+        }
     }
 
     pub fn has_cycle_completed(&self) -> bool {
@@ -1499,6 +1498,23 @@ impl GltfSceneInstance {
         Ok(result)
     }
 
+    pub fn inspect_renderables(
+        &self,
+        database: &AssetDatabase,
+        options: &GltfRenderablesOptions,
+        mut f: impl FnMut(&Graph, AnyIndex, GltfSceneRenderable),
+    ) -> Result<(), Box<dyn Error>> {
+        self.recompute_matrices();
+        let mut final_bone_matrices: HashMap<GltfNodeId, Mat4<f32>> = Default::default();
+        for root_index in self.roots() {
+            self.compute_final_bone_matrix(root_index, database, &mut final_bone_matrices)?;
+        }
+        for root_index in self.roots() {
+            self.produce_renderables(root_index, database, options, &final_bone_matrices, &mut f)?;
+        }
+        Ok(())
+    }
+
     fn compute_final_bone_matrix(
         &self,
         index: AnyIndex,
@@ -1553,111 +1569,63 @@ impl GltfSceneInstance {
         final_bone_matrices: &HashMap<GltfNodeId, Mat4<f32>>,
         renderables: &mut GltfSceneRenderables,
     ) -> Result<(), Box<dyn Error>> {
-        if (options.renderable_filter)(&self.graph, index) {
-            let start = renderables.renderables.len();
-            if let Some((transform, mesh)) = self
+        let start = renderables.renderables.len();
+        if (options.renderable_filter)(&self.graph, index)
+            && let Some((transform, mesh)) = self
                 .graph
                 .query::<(
                     Related<GltfSceneAttribute, &GltfSceneTransform>,
                     Related<GltfSceneAttribute, &GltfSceneMesh>,
                 )>(index)
                 .next()
-            {
-                let mesh_asset = mesh
-                    .handle()
-                    .access_checked::<&GltfMesh>(database)
-                    .ok_or("Mesh asset not found")?;
-                let skin = self
-                    .graph
-                    .query::<Related<GltfSceneAttribute, &GltfSceneSkin>>(index)
-                    .next();
-                let skin_asset =
-                    skin.and_then(|skin| skin.handle().access_checked::<&GltfSkin>(database));
+        {
+            let mesh_asset = mesh
+                .handle()
+                .access_checked::<&GltfMesh>(database)
+                .ok_or("Mesh asset not found")?;
+            let skin = self
+                .graph
+                .query::<Related<GltfSceneAttribute, &GltfSceneSkin>>(index)
+                .next();
+            let skin_asset =
+                skin.and_then(|skin| skin.handle().access_checked::<&GltfSkin>(database));
 
-                for primitive in &mesh_asset.primitives {
-                    let triangles = primitive.triangles.clone();
-                    let vertices = primitive
-                        .vertices
-                        .iter()
-                        .map(|v| {
-                            let position = if let Some(skin_asset) = skin_asset {
-                                if let (Some(joints), Some(weights)) = (v.joints, v.weights) {
-                                    let mut skinned_position = Vec3::zero();
-                                    for index in 0..4 {
-                                        let joint_index = joints[index] as usize;
-                                        if joint_index < skin_asset.bones.len() {
-                                            let bone = &skin_asset.bones[joint_index];
-                                            if let Some(bone_matrix) =
-                                                final_bone_matrices.get(&bone.id)
-                                            {
-                                                skinned_position += bone_matrix
-                                                    .mul_point(v.position)
-                                                    * weights[index];
-                                            }
-                                        }
-                                    }
-                                    skinned_position
-                                } else {
-                                    v.position
-                                }
-                            } else {
-                                v.position
-                            };
-                            let position = transform.global_matrix.mul_point(position).into_array();
-                            let mut position =
-                                [position[options.axes[0]], position[options.axes[1]]];
-                            if options.flip_axes[0] {
-                                position[0] = -position[0];
-                            }
-                            if options.flip_axes[1] {
-                                position[1] = -position[1];
-                            }
-
-                            Vertex {
-                                position,
-                                uv: [v.uv.x, v.uv.y, 0.0],
-                                color: v.color.into_array(),
-                            }
-                        })
-                        .collect();
-
-                    let mut renderable = GltfSceneRenderable {
-                        shader: options.shader.clone(),
-                        main_texture: primitive.main_texture.as_deref().cloned(),
-                        blending: primitive.blending,
-                        wireframe: false,
-                        triangles,
-                        vertices,
-                    };
-                    (options.renderable_modifier)(&self.graph, index, &mut renderable);
-                    if let Some(sorting_fn) = options.triangle_sorting {
-                        renderable.triangles.sort_by(|a, b| {
-                            let a_vertices = [
-                                &primitive.vertices[a.a as usize].position,
-                                &primitive.vertices[a.b as usize].position,
-                                &primitive.vertices[a.c as usize].position,
-                            ];
-                            let b_vertices = [
-                                &primitive.vertices[b.a as usize].position,
-                                &primitive.vertices[b.b as usize].position,
-                                &primitive.vertices[b.c as usize].position,
-                            ];
-                            sorting_fn(a_vertices, b_vertices)
-                        });
-                    }
-                    renderables.renderables.push(renderable);
+            for primitive in &mesh_asset.primitives {
+                let mut renderable = Self::produce_primitive_renderable(
+                    options,
+                    final_bone_matrices,
+                    skin_asset,
+                    primitive,
+                    &transform,
+                );
+                (options.renderable_modifier)(&self.graph, index, &mut renderable);
+                if let Some(sorting_fn) = options.triangle_sorting {
+                    renderable.triangles.sort_by(|a, b| {
+                        let a_vertices = [
+                            &primitive.vertices[a.a as usize].position,
+                            &primitive.vertices[a.b as usize].position,
+                            &primitive.vertices[a.c as usize].position,
+                        ];
+                        let b_vertices = [
+                            &primitive.vertices[b.a as usize].position,
+                            &primitive.vertices[b.b as usize].position,
+                            &primitive.vertices[b.c as usize].position,
+                        ];
+                        sorting_fn(a_vertices, b_vertices)
+                    });
                 }
+                renderables.renderables.push(renderable);
             }
-            (options.custom_renderables)(
-                &self.graph,
-                index,
-                database,
-                options,
-                final_bone_matrices,
-                renderables,
-                start..renderables.renderables.len(),
-            )?;
         }
+        (options.custom_renderables)(
+            &self.graph,
+            index,
+            database,
+            options,
+            final_bone_matrices,
+            renderables,
+            start..renderables.renderables.len(),
+        )?;
 
         for child_index in self
             .graph
@@ -1673,6 +1641,115 @@ impl GltfSceneInstance {
         }
 
         Ok(())
+    }
+
+    fn produce_renderables(
+        &self,
+        index: AnyIndex,
+        database: &AssetDatabase,
+        options: &GltfRenderablesOptions,
+        final_bone_matrices: &HashMap<GltfNodeId, Mat4<f32>>,
+        f: &mut impl FnMut(&Graph, AnyIndex, GltfSceneRenderable),
+    ) -> Result<(), Box<dyn Error>> {
+        if (options.renderable_filter)(&self.graph, index)
+            && let Some((transform, mesh)) = self
+                .graph
+                .query::<(
+                    Related<GltfSceneAttribute, &GltfSceneTransform>,
+                    Related<GltfSceneAttribute, &GltfSceneMesh>,
+                )>(index)
+                .next()
+        {
+            let mesh_asset = mesh
+                .handle()
+                .access_checked::<&GltfMesh>(database)
+                .ok_or("Mesh asset not found")?;
+            let skin = self
+                .graph
+                .query::<Related<GltfSceneAttribute, &GltfSceneSkin>>(index)
+                .next();
+            let skin_asset =
+                skin.and_then(|skin| skin.handle().access_checked::<&GltfSkin>(database));
+
+            for primitive in &mesh_asset.primitives {
+                let renderable = Self::produce_primitive_renderable(
+                    options,
+                    final_bone_matrices,
+                    skin_asset,
+                    primitive,
+                    &transform,
+                );
+                f(&self.graph, index, renderable);
+            }
+        }
+
+        for child_index in self
+            .graph
+            .query::<Related<GltfSceneChild, Node<GltfNodeId>>>(index)
+        {
+            self.produce_renderables(child_index, database, options, final_bone_matrices, f)?;
+        }
+
+        Ok(())
+    }
+
+    fn produce_primitive_renderable(
+        options: &GltfRenderablesOptions,
+        final_bone_matrices: &HashMap<GltfNodeId, Mat4<f32>>,
+        skin_asset: Option<&GltfSkin>,
+        primitive: &GltfPrimitive,
+        transform: &GltfSceneTransform,
+    ) -> GltfSceneRenderable {
+        let triangles = primitive.triangles.clone();
+        let vertices = primitive
+            .vertices
+            .iter()
+            .map(|v| {
+                let position = if let Some(skin_asset) = skin_asset {
+                    if let (Some(joints), Some(weights)) = (v.joints, v.weights) {
+                        let mut skinned_position = Vec3::zero();
+                        for index in 0..4 {
+                            let joint_index = joints[index] as usize;
+                            if joint_index < skin_asset.bones.len() {
+                                let bone = &skin_asset.bones[joint_index];
+                                if let Some(bone_matrix) = final_bone_matrices.get(&bone.id) {
+                                    skinned_position +=
+                                        bone_matrix.mul_point(v.position) * weights[index];
+                                }
+                            }
+                        }
+                        skinned_position
+                    } else {
+                        v.position
+                    }
+                } else {
+                    v.position
+                };
+                let position = transform.global_matrix.mul_point(position).into_array();
+                let mut position = [position[options.axes[0]], position[options.axes[1]]];
+                if options.flip_axes[0] {
+                    position[0] = -position[0];
+                }
+                if options.flip_axes[1] {
+                    position[1] = -position[1];
+                }
+
+                Vertex {
+                    position,
+                    uv: [v.uv.x, v.uv.y, 0.0],
+                    color: v.color.into_array(),
+                }
+            })
+            .collect();
+
+        GltfSceneRenderable {
+            shader: options.shader.clone(),
+            main_texture: primitive.main_texture.as_deref().cloned(),
+            blending: primitive.blending,
+            wireframe: false,
+            triangles,
+            vertices,
+        }
     }
 
     fn collect_bones(

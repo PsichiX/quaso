@@ -51,7 +51,7 @@ pub fn find_asset_by_name(database: &AssetDatabase, name: &str) -> Option<AssetH
         .map(AssetHandle::new)
 }
 
-pub fn make_database(fetch: impl AssetFetch) -> AssetDatabase {
+pub fn make_database_protocols() -> AssetDatabase {
     AssetDatabase::default()
         .with_protocol(BytesAssetProtocol)
         .with_protocol(TextAssetProtocol)
@@ -65,7 +65,10 @@ pub fn make_database(fetch: impl AssetFetch) -> AssetDatabase {
         .with_protocol(LdtkAssetProtocol)
         .with_protocol(make_gltf_asset_protocol())
         .with_protocol(make_atlas_texture_asset_protocol())
-        .with_fetch(fetch)
+}
+
+pub fn make_database(fetch: impl AssetFetch) -> AssetDatabase {
+    make_database_protocols().with_fetch(fetch)
 }
 
 pub fn make_memory_database(package: &[u8]) -> Result<AssetDatabase, Box<dyn Error>> {
