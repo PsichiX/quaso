@@ -41,11 +41,7 @@ pub fn split_horizontal<R>(
         begin();
         let result = f();
         let widgets = end();
-        for (mut widget, size) in widgets
-            .into_iter()
-            .take(2)
-            .zip([left_size, right_size].into_iter())
-        {
+        for (mut widget, size) in widgets.into_iter().take(2).zip([left_size, right_size]) {
             widget
                 .props_mut()
                 .unwrap()
@@ -65,11 +61,7 @@ pub fn split_vertical<R>(
         begin();
         let result = f();
         let widgets = end();
-        for (mut widget, size) in widgets
-            .into_iter()
-            .take(2)
-            .zip([top_size, bottom_size].into_iter())
-        {
+        for (mut widget, size) in widgets.into_iter().take(2).zip([top_size, bottom_size]) {
             widget
                 .props_mut()
                 .unwrap()

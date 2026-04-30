@@ -338,8 +338,8 @@ impl SpineSkeleton {
                     .collect(),
                 textures: self
                     .textures
-                    .iter()
-                    .filter_map(|(_, texture)| {
+                    .values()
+                    .filter_map(|texture| {
                         Some((context.texture(Some(&texture.texture))?, texture.filtering))
                     })
                     .collect(),
