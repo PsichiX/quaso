@@ -158,8 +158,12 @@ impl GameState for State {
         self.scripting = Some(scripting);
     }
 
-    fn exit(&mut self, context: GameContext) {
+    fn exit(&mut self, mut context: GameContext) {
         context.input.pop_mapping();
+
+        if let (Some(scripting), Some(mut player)) = (self.scripting.as_mut(), self.player.take()) {
+            player.destroy(scripting, &mut context);
+        }
     }
 
     fn fixed_update(&mut self, mut context: GameContext, delta_time: f32) {

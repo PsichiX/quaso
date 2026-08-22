@@ -18,6 +18,10 @@ mod player {
         Player { x: 0.0f, y: 0.0f, texture: texture }
     }
 
+    fn Player::destroy(self) {
+        print("Destroying player with texture: " + self.texture);
+    }
+
     fn Player::update(self, delta_time) {
         let velocity = speed() * delta_time;
         self.x += axis("left", "right") * velocity;
