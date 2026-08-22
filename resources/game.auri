@@ -7,13 +7,29 @@
 // `draw_sprite` and `input_down` are host functions quaso registers. They are
 // how the script reaches the game.
 
-mod game {
+mod player {
     struct Player {
         x,
         y,
         texture
     }
 
+    fn Player::create(texture) {
+        Player { x: 0.0f, y: 0.0f, texture: texture }
+    }
+
+    fn Player::update(self, delta_time) {
+        let velocity = speed() * delta_time;
+        self.x += axis("left", "right") * velocity;
+        self.y += axis("up", "down") * velocity;
+    }
+
+    fn Player::draw(self) {
+        draw_sprite(self.texture, self.x, self.y);
+    }
+}
+
+mod utils {
     fn speed() {
         150.0f
     }
@@ -27,19 +43,6 @@ mod game {
             result += 1.0f;
         }
         result
-    }
-
-    fn Player::create() {
-        Player { x: 0.0f, y: 0.0f, texture: "ferris.png" }
-    }
-
-    fn Player::update(self, delta_time) {
-        self.x += axis("left", "right") * speed() * delta_time;
-        self.y += axis("up", "down") * speed() * delta_time;
-    }
-
-    fn Player::draw(self) {
-        draw_sprite(self.texture, self.x, self.y);
     }
 
     fn greet(name) {

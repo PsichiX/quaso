@@ -133,10 +133,16 @@ impl GameState for State {
 
         // The script builds the object and hands the object back. Nothing on
         // this side knows what a `Player` holds.
-        self.player = ScriptObject::create(&mut scripting, &mut context, "game", "Player", []);
+        self.player = ScriptObject::create(
+            &mut scripting,
+            &mut context,
+            "player",
+            "Player",
+            [DynamicManagedGc::new("ferris.png".to_owned())],
+        );
 
         // A plain function call, to show a script value coming back to Rust.
-        if let Some(function) = scripting.find("game", "greet") {
+        if let Some(function) = scripting.find("utils", "greet") {
             let result = scripting.call(
                 &mut context,
                 &function,
