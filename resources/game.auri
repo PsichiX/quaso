@@ -1,0 +1,48 @@
+// The script that `examples/scripting.rs` drives.
+//
+// `Player` owns its own data. The host never sees the fields, it only holds
+// the value `Player::create` returns and calls the methods back on that value
+// when the matching game state event happens.
+//
+// `draw_sprite` and `input_down` are host functions quaso registers. They are
+// how the script reaches the game.
+
+mod game {
+    struct Player {
+        x,
+        y,
+        texture
+    }
+
+    fn speed() {
+        150.0f
+    }
+
+    fn axis(negative, positive) {
+        let result = 0.0f;
+        if input_down(negative) {
+            result -= 1.0f;
+        }
+        if input_down(positive) {
+            result += 1.0f;
+        }
+        result
+    }
+
+    fn Player::create() {
+        Player { x: 0.0f, y: 0.0f, texture: "ferris.png" }
+    }
+
+    fn Player::update(self, delta_time) {
+        self.x += axis("left", "right") * speed() * delta_time;
+        self.y += axis("up", "down") * speed() * delta_time;
+    }
+
+    fn Player::draw(self) {
+        draw_sprite(self.texture, self.x, self.y);
+    }
+
+    fn greet(name) {
+        "Hello from " + name + "!"
+    }
+}

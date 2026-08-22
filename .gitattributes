@@ -1,0 +1,2 @@
+*.auri linguist-language=Rust
+*.auri linguist-detectable=false

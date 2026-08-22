@@ -434,7 +434,7 @@ impl Map {
         MapRenderer {
             clip_region: None,
             clip_each_tile: false,
-            show_colliders: None,
+            show_colliders: Default::default(),
             map: self,
         }
     }
@@ -729,7 +729,7 @@ impl MapCollider {
 pub struct MapRenderer<'a> {
     pub clip_region: Option<Rect<f32, f32>>,
     pub clip_each_tile: bool,
-    pub show_colliders: Option<(ShaderRef, Rgba<f32>, GlowBlending)>,
+    pub show_colliders: Vec<(u32, ShaderRef, Rgba<f32>, GlowBlending)>,
     map: &'a Map,
 }
 
@@ -750,7 +750,19 @@ impl MapRenderer<'_> {
         color: Rgba<f32>,
         blending: GlowBlending,
     ) -> Self {
-        self.show_colliders = Some((shader, color, blending));
+        self.show_colliders
+            .push((u32::MAX, shader, color, blending));
+        self
+    }
+
+    pub fn show_colliders_masked(
+        mut self,
+        mask: u32,
+        shader: ShaderRef,
+        color: Rgba<f32>,
+        blending: GlowBlending,
+    ) -> Self {
+        self.show_colliders.push((mask, shader, color, blending));
         self
     }
 }
@@ -853,72 +865,71 @@ impl Drawable for MapRenderer<'_> {
                     },
                 );
             }
-            let Some((shader, color, blending)) = &self.show_colliders else {
-                continue;
-            };
-            let color = color.into_array();
-            let batch = GraphicsBatch {
-                shader: context.shader(Some(shader)),
-                uniforms: std::iter::once((
-                    "u_projection_view".into(),
-                    GlowUniformValue::M4(
-                        graphics.state().main_camera.world_matrix().into_col_array(),
-                    ),
-                ))
-                .collect(),
-                textures: Default::default(),
-                blending: *blending,
-                scissor: None,
-                wireframe: context.wireframe,
-            };
-            graphics.state_mut().stream.batch_optimized(batch);
-            let transform = context.top_transform()
-                * transform_to_matrix(self.map.transform)
-                * transform_to_matrix(level.transform);
-            graphics.state_mut().stream.transformed(
-                move |stream| {
-                    for collider in &level.colliders {
-                        if !collider.enabled {
-                            continue;
+            for (mask, shader, color, blending) in &self.show_colliders {
+                let color = color.into_array();
+                let batch = GraphicsBatch {
+                    shader: context.shader(Some(shader)),
+                    uniforms: std::iter::once((
+                        "u_projection_view".into(),
+                        GlowUniformValue::M4(
+                            graphics.state().main_camera.world_matrix().into_col_array(),
+                        ),
+                    ))
+                    .collect(),
+                    textures: Default::default(),
+                    blending: *blending,
+                    scissor: None,
+                    wireframe: context.wireframe,
+                };
+                graphics.state_mut().stream.batch_optimized(batch);
+                let transform = context.top_transform()
+                    * transform_to_matrix(self.map.transform)
+                    * transform_to_matrix(level.transform);
+                graphics.state_mut().stream.transformed(
+                    move |stream| {
+                        for collider in &level.colliders {
+                            if !collider.enabled || (collider.mask & mask == 0) {
+                                continue;
+                            }
+                            if self.clip_each_tile
+                                && let Some(clip_region) = self.clip_region
+                                && !collider.rectangle.collides_with_rect(clip_region)
+                            {
+                                continue;
+                            }
+                            let offset = collider.rectangle.position();
+                            let size = collider.rectangle.extent();
+                            stream.quad([
+                                Vertex {
+                                    position: [offset.x, offset.y],
+                                    uv: [0.0, 0.0, 0.0],
+                                    color,
+                                },
+                                Vertex {
+                                    position: [offset.x + size.w, offset.y],
+                                    uv: [0.0, 0.0, 0.0],
+                                    color,
+                                },
+                                Vertex {
+                                    position: [offset.x + size.w, offset.y + size.h],
+                                    uv: [0.0, 0.0, 0.0],
+                                    color,
+                                },
+                                Vertex {
+                                    position: [offset.x, offset.y + size.h],
+                                    uv: [0.0, 0.0, 0.0],
+                                    color,
+                                },
+                            ]);
                         }
-                        if self.clip_each_tile
-                            && let Some(clip_region) = self.clip_region
-                            && !collider.rectangle.collides_with_rect(clip_region)
-                        {
-                            continue;
-                        }
-                        let offset = collider.rectangle.position();
-                        let size = collider.rectangle.extent();
-                        stream.quad([
-                            Vertex {
-                                position: [offset.x, offset.y],
-                                uv: [0.0, 0.0, 0.0],
-                                color,
-                            },
-                            Vertex {
-                                position: [offset.x + size.w, offset.y],
-                                uv: [0.0, 0.0, 0.0],
-                                color,
-                            },
-                            Vertex {
-                                position: [offset.x + size.w, offset.y + size.h],
-                                uv: [0.0, 0.0, 0.0],
-                                color,
-                            },
-                            Vertex {
-                                position: [offset.x, offset.y + size.h],
-                                uv: [0.0, 0.0, 0.0],
-                                color,
-                            },
-                        ]);
-                    }
-                },
-                |vertex| {
-                    let point = transform.mul_point(Vec2::from(vertex.position));
-                    vertex.position[0] = point.x;
-                    vertex.position[1] = point.y;
-                },
-            );
+                    },
+                    |vertex| {
+                        let point = transform.mul_point(Vec2::from(vertex.position));
+                        vertex.position[0] = point.x;
+                        vertex.position[1] = point.y;
+                    },
+                );
+            }
         }
     }
 }

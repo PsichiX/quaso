@@ -2,7 +2,7 @@ use crate::{
     assets::texture::TextureAsset,
     map::{
         LdtkMapBuilder, Map,
-        ldtk::{EntityInstance, LayerInstance, Ldtk, Level},
+        ldtk::{EntityInstance, LayerInstance, Ldtk, Level, TilesetDefinition, TilesetRectangle},
     },
 };
 use anput::world::World;
@@ -185,6 +185,49 @@ impl LdtkAsset {
                 },
             )
     }
+
+    pub fn extract_tileset_uv(
+        &self,
+        rectangle: &TilesetRectangle,
+    ) -> Option<(&TilesetDefinition, Rect<f32, f32>)> {
+        let tileset = self
+            .world
+            .defs
+            .tilesets
+            .iter()
+            .find(|tileset| rectangle.tileset_uid == tileset.uid)?;
+        Some((
+            tileset,
+            Rect {
+                x: rectangle.x as f32 / tileset.px_wid as f32,
+                y: rectangle.y as f32 / tileset.px_hei as f32,
+                w: rectangle.w as f32 / tileset.px_wid as f32,
+                h: rectangle.h as f32 / tileset.px_hei as f32,
+            },
+        ))
+    }
+
+    pub fn extract_tileset_uv_simple(
+        &self,
+        tileset_id: &str,
+        region: Rect<i64, i64>,
+    ) -> Option<(&TilesetDefinition, Rect<f32, f32>)> {
+        let tileset = self
+            .world
+            .defs
+            .tilesets
+            .iter()
+            .find(|tileset| tileset.identifier == tileset_id)?;
+        Some((
+            tileset,
+            Rect {
+                x: region.x as f32 / tileset.px_wid as f32,
+                y: region.y as f32 / tileset.px_hei as f32,
+                w: region.w as f32 / tileset.px_wid as f32,
+                h: region.h as f32 / tileset.px_hei as f32,
+            },
+        ))
+    }
 }
 
 pub trait LdtkTileExtractor {
@@ -334,6 +377,18 @@ impl<Entity> FilteredLdtkEntityExtractor<Entity> {
     ) -> Self {
         self.extractors.push((
             Box::new(move |entity| entity.identifier == identifier),
+            Box::new(extractor),
+        ));
+        self
+    }
+
+    pub fn by_identifiers(
+        mut self,
+        identifiers: &'static [&'static str],
+        extractor: impl LdtkEntityExtractor<Entity = Entity> + 'static,
+    ) -> Self {
+        self.extractors.push((
+            Box::new(move |entity| identifiers.contains(&entity.identifier.as_str())),
             Box::new(extractor),
         ));
         self

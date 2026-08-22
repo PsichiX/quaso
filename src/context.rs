@@ -4,10 +4,8 @@ use crate::{
     gc::Heartbeat,
     multiplayer::{GameConnection, GameMultiplayer, GameMultiplayerChange, GameNetwork},
 };
-use anput::universe::Universe;
 use keket::database::AssetDatabase;
 use moirai::queue::JobQueue;
-use nodio::graph::Graph;
 use spitfire_draw::{context::DrawContext, utils::Vertex};
 use spitfire_glow::graphics::Graphics;
 use spitfire_gui::context::GuiContext;
@@ -31,8 +29,6 @@ pub struct GameContext<'a> {
     pub fixed_update_queue: &'a JobQueue,
     pub draw_queue: &'a JobQueue,
     pub draw_gui_queue: &'a JobQueue,
-    pub universe: &'a mut Universe,
-    pub graph: &'a mut Graph,
     pub state_heartbeat: &'a Heartbeat,
     pub subsystems: GameSubsystems<'a>,
     pub time: f32,
@@ -100,8 +96,6 @@ impl<'a> GameContext<'a> {
             fixed_update_queue: self.fixed_update_queue,
             draw_queue: self.draw_queue,
             draw_gui_queue: self.draw_gui_queue,
-            universe: self.universe,
-            graph: self.graph,
             state_heartbeat: self.state_heartbeat,
             subsystems: GameSubsystems {
                 subsystems: self.subsystems.subsystems,

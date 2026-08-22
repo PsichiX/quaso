@@ -1,14 +1,20 @@
+// A game object defined in script and driven by the host.
+//
+// The script declares `Player`, with its own data and its own `update` and
+// `draw`. This game state holds the value `Player::create` returned and calls
+// the matching method when the matching event happens. So the host owns the
+// lifecycle and the script owns the object.
+
 use quaso::{
     GameLauncher,
-    assets::{make_directory_database, shader::ShaderAsset},
+    assets::{auri::AuriAsset, make_directory_database, shader::ShaderAsset},
     config::Config,
     context::GameContext,
     game::{GameInstance, GameState, GameStateChange},
-    script_contents,
-    scripting::{call_object, create_host, get, new_init, new_typed, set},
+    scripting::{ScriptObject, Scripting},
     third_party::{
-        intuicio_frontend_simpleton::{Real, Reference},
-        raui_core::layout::CoordsMappingScaling,
+        intuicio_core::registry::Registry,
+        intuicio_data::managed::gc::DynamicManagedGc,
         raui_core::widget::{
             component::text_box::TextBoxProps,
             unit::text::{TextBoxFont, TextBoxHorizontalAlign, TextBoxVerticalAlign},
@@ -23,25 +29,14 @@ use quaso::{
             graphics::{CameraScaling, Shader},
             renderer::GlowTextureFiltering,
         },
-        spitfire_input::{
-            CardinalInputCombinator, InputActionRef, InputConsume, InputMapping, VirtualAction,
-        },
+        spitfire_input::{InputActionRef, InputConsume, InputMapping, VirtualAction},
         vek::Vec2,
         windowing::event::VirtualKeyCode,
     },
 };
-use std::error::Error;
-
-// We define scripts by including them into application in constant,
-// to make it work also for web builds.
-script_contents!(SCRIPTS => "../resources/player.simp");
-
-const SPEED: f32 = 100.0;
+use std::{collections::HashMap, error::Error};
 
 fn main() -> Result<(), Box<dyn Error>> {
-    // Create global scriptable host from script contents.
-    create_host(Default::default(), SCRIPTS, []);
-
     GameLauncher::new(GameInstance::new(Preloader).setup_assets(|assets| {
         *assets = make_directory_database("./resources/").unwrap();
     }))
@@ -52,82 +47,6 @@ fn main() -> Result<(), Box<dyn Error>> {
 }
 
 #[derive(Default)]
-struct GameObject {
-    pub sprite: Sprite,
-    // Here we store object that holds scriptable state for this game object.
-    pub script_object: Reference,
-}
-
-impl Drop for GameObject {
-    fn drop(&mut self) {
-        self.sync_state_to_script();
-        call_object(self.script_object.clone(), "on_destroy", &[]);
-        self.sync_script_to_state();
-    }
-}
-
-impl GameObject {
-    fn new(sprite: Sprite, speed: f32, type_name: &str, module_name: &str) -> Self {
-        let mut result = Self {
-            sprite,
-            // Create object by type name and module name for struct from script side.
-            script_object: new_init(
-                type_name,
-                module_name,
-                &[("speed", new_typed(speed as Real))],
-            ),
-        };
-        result.sync_state_to_script();
-        // Having scriptable state object, we can call function on it
-        // based on struct module name.
-        call_object(result.script_object.clone(), "on_create", &[]);
-        result.sync_script_to_state();
-        result
-    }
-
-    fn sync_state_to_script(&self) {
-        // We should synchronize state between game and script side before we
-        // do changes in scripts - otherwise game can't see script changes.
-        if !self.script_object.is_null() {
-            set(
-                self.script_object.clone(),
-                "x",
-                new_typed(self.sprite.transform.position.x as Real),
-            );
-            set(
-                self.script_object.clone(),
-                "y",
-                new_typed(self.sprite.transform.position.y as Real),
-            );
-        }
-    }
-
-    fn sync_script_to_state(&mut self) {
-        if !self.script_object.is_null() {
-            self.sprite.transform.position.x =
-                *get(self.script_object.clone(), "x").read::<Real>().unwrap() as f32;
-            self.sprite.transform.position.y =
-                *get(self.script_object.clone(), "y").read::<Real>().unwrap() as f32;
-        }
-    }
-
-    fn on_update(&mut self, delta_time: f32, movement: &CardinalInputCombinator) {
-        self.sync_state_to_script();
-        let movement = Vec2::<f32>::from(movement.get());
-        call_object(
-            self.script_object.clone(),
-            "on_update",
-            &[
-                new_typed(delta_time as Real),
-                new_typed(movement.x as Real),
-                new_typed(movement.y as Real),
-            ],
-        );
-        self.sync_script_to_state();
-    }
-}
-
-#[derive(Default)]
 struct Preloader;
 
 impl GameState for Preloader {
@@ -135,18 +54,7 @@ impl GameState for Preloader {
         context.graphics.state.color = [0.2, 0.2, 0.2, 1.0];
         context.graphics.state.main_camera.screen_alignment = 0.5.into();
         context.graphics.state.main_camera.scaling = CameraScaling::FitVertical(500.0);
-        context.gui.coords_map_scaling = CoordsMappingScaling::FitVertical(500.0);
 
-        context
-            .assets
-            .spawn(
-                "shader://color",
-                (ShaderAsset::new(
-                    Shader::COLORED_VERTEX_2D,
-                    Shader::PASS_FRAGMENT,
-                ),),
-            )
-            .unwrap();
         context
             .assets
             .spawn(
@@ -165,96 +73,118 @@ impl GameState for Preloader {
             )
             .unwrap();
 
-        context.assets.ensure("texture://ferris.png").unwrap();
-
         context.assets.ensure("font://roboto.ttf").unwrap();
+        context.assets.ensure("texture://ferris.png").unwrap();
+        context.assets.ensure("auri://game.auri").unwrap();
+    }
 
-        *context.state_change = GameStateChange::Swap(Box::new(State::default()));
+    fn update(&mut self, context: GameContext, _: f32) {
+        if !context.assets.is_busy() {
+            *context.state_change = GameStateChange::Swap(Box::new(State::default()));
+        }
     }
 }
 
 #[derive(Default)]
 struct State {
-    ferris: GameObject,
-    movement: CardinalInputCombinator,
+    scripting: Option<Scripting>,
+    player: Option<ScriptObject>,
+    greeting: String,
     exit: InputActionRef,
 }
 
 impl GameState for State {
-    fn enter(&mut self, context: GameContext) {
-        self.ferris = GameObject::new(
-            Sprite::single(SpriteTexture {
-                sampler: "u_image".into(),
-                texture: TextureRef::name("ferris.png"),
-                filtering: GlowTextureFiltering::Linear,
-            })
-            .pivot(0.5.into()),
-            SPEED,
-            "Player",
-            "player",
-        );
+    fn enter(&mut self, mut context: GameContext) {
+        let file = context
+            .assets
+            .ensure("auri://game.auri")
+            .unwrap()
+            .access::<&AuriAsset>(context.assets)
+            .file
+            .clone();
+        let mut scripting = Scripting::default();
+        install_host_functions(scripting.registry_mut());
+        scripting.install([("game.auri".to_owned(), file)]);
 
-        let move_left = InputActionRef::default();
-        let move_right = InputActionRef::default();
-        let move_up = InputActionRef::default();
-        let move_down = InputActionRef::default();
-        self.movement = CardinalInputCombinator::new(
-            move_left.clone(),
-            move_right.clone(),
-            move_up.clone(),
-            move_down.clone(),
-        );
+        // The script asks for actions by name, so the mapping is built here and
+        // the actions are put where the host functions can find the actions.
+        let left = InputActionRef::default();
+        let right = InputActionRef::default();
+        let up = InputActionRef::default();
+        let down = InputActionRef::default();
         context.input.push_mapping(
             InputMapping::default()
                 .consume(InputConsume::Hit)
-                .action(
-                    VirtualAction::KeyButton(VirtualKeyCode::A),
-                    move_left.clone(),
-                )
-                .action(
-                    VirtualAction::KeyButton(VirtualKeyCode::D),
-                    move_right.clone(),
-                )
-                .action(VirtualAction::KeyButton(VirtualKeyCode::W), move_up.clone())
-                .action(
-                    VirtualAction::KeyButton(VirtualKeyCode::S),
-                    move_down.clone(),
-                )
-                .action(VirtualAction::KeyButton(VirtualKeyCode::Left), move_left)
-                .action(VirtualAction::KeyButton(VirtualKeyCode::Right), move_right)
-                .action(VirtualAction::KeyButton(VirtualKeyCode::Up), move_up)
-                .action(VirtualAction::KeyButton(VirtualKeyCode::Down), move_down)
+                .action(VirtualAction::KeyButton(VirtualKeyCode::A), left.clone())
+                .action(VirtualAction::KeyButton(VirtualKeyCode::D), right.clone())
+                .action(VirtualAction::KeyButton(VirtualKeyCode::W), up.clone())
+                .action(VirtualAction::KeyButton(VirtualKeyCode::S), down.clone())
                 .action(
                     VirtualAction::KeyButton(VirtualKeyCode::Escape),
                     self.exit.clone(),
                 ),
         );
+        context.globals.set(ScriptInputs(HashMap::from([
+            ("left".to_owned(), left),
+            ("right".to_owned(), right),
+            ("up".to_owned(), up),
+            ("down".to_owned(), down),
+        ])));
+
+        // The script builds the object and hands the object back. Nothing on
+        // this side knows what a `Player` holds.
+        self.player = ScriptObject::create(&mut scripting, &mut context, "game", "Player", []);
+
+        // A plain function call, to show a script value coming back to Rust.
+        if let Some(function) = scripting.find("game", "greet") {
+            let result = scripting.call(
+                &mut context,
+                &function,
+                [DynamicManagedGc::new("auri".to_owned())],
+            );
+            if let Some(result) = result
+                && result.is::<String>()
+            {
+                self.greeting = result.read::<true, String>().to_owned();
+            }
+        }
+
+        self.scripting = Some(scripting);
     }
 
     fn exit(&mut self, context: GameContext) {
         context.input.pop_mapping();
     }
 
-    fn fixed_update(&mut self, context: GameContext, delta_time: f32) {
-        self.ferris.on_update(delta_time, &self.movement);
+    fn fixed_update(&mut self, mut context: GameContext, delta_time: f32) {
+        if let (Some(scripting), Some(player)) = (self.scripting.as_mut(), self.player.as_mut()) {
+            player.call(
+                scripting,
+                &mut context,
+                "update",
+                [DynamicManagedGc::new(delta_time as f64)],
+            );
+        }
 
         if self.exit.get().is_pressed() {
             *context.state_change = GameStateChange::Pop;
         }
     }
 
-    fn draw(&mut self, context: GameContext) {
-        self.ferris.sprite.draw(context.draw, context.graphics);
+    fn draw(&mut self, mut context: GameContext) {
+        if let (Some(scripting), Some(player)) = (self.scripting.as_mut(), self.player.as_mut()) {
+            player.call(scripting, &mut context, "draw", []);
+        }
     }
 
     fn draw_gui(&mut self, _: GameContext) {
         text_box(TextBoxProps {
-            text: "Simpleton scripting".to_owned(),
+            text: self.greeting.to_owned(),
             horizontal_align: TextBoxHorizontalAlign::Center,
             vertical_align: TextBoxVerticalAlign::Bottom,
             font: TextBoxFont {
                 name: "roboto.ttf".to_owned(),
-                size: 50.0,
+                size: 40.0,
             },
             color: Color {
                 r: 1.0,
@@ -266,3 +196,74 @@ impl GameState for State {
         });
     }
 }
+
+// Quaso registers no host functions of its own, so what a script may do is
+// entirely this game's choice. These four are what `resources/game.auri` needs.
+//
+// `add_host_function` takes how many arguments the function has, because every
+// auri value is a `DynamicManagedGc` and a signature has nothing else to say.
+// The body pops the arguments left to right and returns the one result.
+fn install_host_functions(registry: &mut Registry) {
+    Scripting::add_host_function(registry, "print", 1, |context, _| {
+        let value = Scripting::pop_argument(context, "print");
+        println!("{}", Scripting::describe(&value));
+        DynamicManagedGc::new(())
+    });
+
+    Scripting::add_host_function(registry, "text", 1, |context, _| {
+        let value = Scripting::pop_argument(context, "text");
+        DynamicManagedGc::new(Scripting::describe(&value))
+    });
+
+    // `with_game` is what reaches the running game from inside a script call.
+    Scripting::add_host_function(registry, "draw_sprite", 3, |context, _| {
+        let texture = Scripting::text_of(
+            &Scripting::pop_argument(context, "draw_sprite"),
+            "draw_sprite",
+        );
+        let x = Scripting::number(
+            &Scripting::pop_argument(context, "draw_sprite"),
+            "draw_sprite",
+        ) as f32;
+        let y = Scripting::number(
+            &Scripting::pop_argument(context, "draw_sprite"),
+            "draw_sprite",
+        ) as f32;
+        Scripting::with_game(context, "draw_sprite", |game| {
+            Sprite::single(SpriteTexture {
+                sampler: "u_image".into(),
+                texture: TextureRef::name(texture),
+                filtering: GlowTextureFiltering::Linear,
+            })
+            .pivot(0.5.into())
+            .position(Vec2::new(x, y))
+            .draw(game.draw, game.graphics);
+        });
+        DynamicManagedGc::new(())
+    });
+
+    Scripting::add_host_function(registry, "input_down", 1, |context, _| {
+        let name = Scripting::text_of(
+            &Scripting::pop_argument(context, "input_down"),
+            "input_down",
+        );
+        let down = Scripting::with_game(context, "input_down", |game| {
+            game.globals
+                .access::<ScriptInputs>()
+                .and_then(|inputs| {
+                    inputs
+                        .read()
+                        .0
+                        .get(&name)
+                        .map(|action| action.get().is_down())
+                })
+                .unwrap_or(false)
+        });
+        DynamicManagedGc::new(down)
+    });
+}
+
+// A script cannot build an input mapping, so the game builds the mapping and
+// puts the actions where a host function can find the actions.
+#[derive(Default)]
+struct ScriptInputs(HashMap<String, InputActionRef>);

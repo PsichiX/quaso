@@ -1,141 +1,397 @@
-use intuicio_backend_vm::scope::VmScope;
-use intuicio_core::{context::Context, host::Host, registry::Registry};
-use intuicio_frontend_simpleton::{
-    Reference, Type, library,
-    script::{SimpletonModule, SimpletonPackage, SimpletonScriptExpression},
+use crate::{context::GameContext, game::GameState};
+use ankha::{
+    library::AnkhaVmScope,
+    script::{AnkhaFile, AnkhaPackage},
 };
-use serde::{Deserialize, Serialize};
+use intuicio_core::{
+    Filter,
+    context::Context,
+    function::{
+        Function, FunctionBody, FunctionHandle, FunctionParameter, FunctionQuery, FunctionSignature,
+    },
+    registry::Registry,
+    types::{TypeHandle, TypeQuery},
+};
+use intuicio_data::managed::gc::DynamicManagedGc;
+use std::{collections::HashMap, ptr::NonNull};
 
-#[macro_export]
-macro_rules! script_contents {
-    ( $const_name:ident => $($path:literal),* ) => {
-        const $const_name: &[&str] = &[ $( include_str!($path) ),* ];
-    };
+const HOST_ACCESS: &str = "quaso";
+
+pub const HOST_MODULE: &str = "host";
+pub const CREATE_METHOD: &str = "create";
+pub const DESTROY_METHOD: &str = "destroy";
+
+#[derive(Default)]
+struct HostAccess {
+    game: Option<NonNull<GameContext<'static>>>,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct ScriptingConfig {
-    pub stack_capacity: usize,
-    pub registers_capacity: usize,
+unsafe impl Send for HostAccess {}
+unsafe impl Sync for HostAccess {}
+
+pub struct Scripting {
+    registry: Registry,
+    context: Context,
 }
 
-impl Default for ScriptingConfig {
+impl Default for Scripting {
     fn default() -> Self {
+        Self::new(10240, 10240)
+    }
+}
+
+impl Scripting {
+    pub fn new(stack_capacity: usize, registers_capacity: usize) -> Self {
+        let mut registry = Registry::default().with_basic_types();
+        ankha::library::install(&mut registry);
+        ankha_auri::library::install(&mut registry);
+        let mut context = Context::new(stack_capacity, registers_capacity);
+        context.set_custom(HOST_ACCESS, HostAccess::default());
+        Self { registry, context }
+    }
+
+    pub fn registry(&self) -> &Registry {
+        &self.registry
+    }
+
+    pub fn registry_mut(&mut self) -> &mut Registry {
+        &mut self.registry
+    }
+
+    pub fn install(&mut self, files: impl IntoIterator<Item = (String, AnkhaFile)>) {
+        let mut package = AnkhaPackage::default();
+        package.files.extend(files);
+        package.install::<AnkhaVmScope>(&mut self.registry, None);
+    }
+
+    pub fn find(&self, module: &str, function: &str) -> Option<FunctionHandle> {
+        self.registry.find_function(FunctionQuery {
+            name: Some(function.into()),
+            module_name: Filter::Matching(module.into()),
+            ..Default::default()
+        })
+    }
+
+    pub fn find_method(
+        &self,
+        module: &str,
+        type_name: &str,
+        method: &str,
+    ) -> Option<FunctionHandle> {
+        self.registry.find_function(FunctionQuery {
+            name: Some(method.into()),
+            module_name: Filter::Matching(module.into()),
+            type_query: Filter::Matching(TypeQuery {
+                name: Some(type_name.into()),
+                ..Default::default()
+            }),
+            ..Default::default()
+        })
+    }
+
+    pub fn call(
+        &mut self,
+        game: &mut GameContext,
+        function: &FunctionHandle,
+        arguments: impl IntoIterator<Item = DynamicManagedGc>,
+    ) -> Option<DynamicManagedGc> {
+        let mut arguments = arguments.into_iter().collect::<Vec<_>>();
+        while let Some(argument) = arguments.pop() {
+            self.context.stack().push(argument);
+        }
+        let pointer = NonNull::new((game as *mut GameContext).cast::<GameContext<'static>>());
+        self.set_game(pointer);
+        function.invoke(&mut self.context, &self.registry);
+        self.set_game(None);
+        self.context.stack().pop::<DynamicManagedGc>()
+    }
+
+    fn set_game(&mut self, pointer: Option<NonNull<GameContext<'static>>>) {
+        if let Some(access) = self.context.custom_mut::<HostAccess>(HOST_ACCESS) {
+            access.game = pointer;
+        }
+    }
+
+    pub fn add_host_function(
+        registry: &mut Registry,
+        name: &str,
+        inputs: usize,
+        body: impl Fn(&mut Context, &Registry) -> DynamicManagedGc + Send + Sync + 'static,
+    ) {
+        let gc = Self::gc_type(registry);
+        let mut signature = FunctionSignature::new(name)
+            .with_module_name(HOST_MODULE)
+            .with_output(FunctionParameter::new("result", gc.clone()));
+        for index in 0..inputs {
+            signature = signature.with_input(FunctionParameter::new(
+                format!("argument{index}"),
+                gc.clone(),
+            ));
+        }
+        registry.add_function(Function::new(
+            signature,
+            FunctionBody::closure(move |context: &mut Context, registry: &Registry| {
+                let result = body(context, registry);
+                context.stack().push(result);
+            }),
+        ));
+    }
+
+    pub fn with_game<R>(
+        context: &mut Context,
+        name: &str,
+        f: impl FnOnce(&mut GameContext) -> R,
+    ) -> R {
+        let game = context
+            .custom::<HostAccess>(HOST_ACCESS)
+            .and_then(|access| access.game)
+            .unwrap_or_else(|| panic!("`{name}` was called outside of a script call!"));
+        // The pointer came from a borrow that outlives this call, and nothing else
+        // holds a borrow of the game while a script runs.
+        f(unsafe { game.as_ptr().as_mut().unwrap() })
+    }
+
+    pub fn pop_argument(context: &mut Context, name: &str) -> DynamicManagedGc {
+        context
+            .stack()
+            .pop::<DynamicManagedGc>()
+            .unwrap_or_else(|| panic!("`{name}` got a stack value that is not gc managed!"))
+    }
+
+    pub fn number(value: &DynamicManagedGc, name: &str) -> f64 {
+        macro_rules! read_as {
+        ($($type:ty),+ $(,)?) => {
+            $(
+                if value.is::<$type>() {
+                    return *value.read::<true, $type>() as f64;
+                }
+            )+
+        };
+    }
+        read_as!(f64, f32, i64, i32, i16, i8, isize, u64, u32, u16, u8, usize);
+        panic!("`{name}` got a value that is not a number!")
+    }
+
+    pub fn text_of(value: &DynamicManagedGc, name: &str) -> String {
+        if value.is::<String>() {
+            return value.read::<true, String>().to_owned();
+        }
+        panic!("`{name}` got a value that is not a string!")
+    }
+
+    pub fn describe(value: &DynamicManagedGc) -> String {
+        macro_rules! describe_as {
+        ($($type:ty),+ $(,)?) => {
+            $(
+                if value.is::<$type>() {
+                    return value.read::<true, $type>().to_string();
+                }
+            )+
+        };
+    }
+        if !value.exists() {
+            return "<dead>".to_owned();
+        }
+        if value.is::<()>() {
+            return "()".to_owned();
+        }
+        describe_as!(
+            String, bool, char, i8, i16, i32, i64, i128, isize, u8, u16, u32, u64, u128, usize,
+            f32, f64,
+        );
+        "<value>".to_owned()
+    }
+
+    pub fn gc_type(registry: &Registry) -> TypeHandle {
+        registry
+            .find_type(TypeQuery::of::<DynamicManagedGc>())
+            .expect("Could not find `DynamicManagedGc` type, install the ankha library first!")
+    }
+}
+
+pub struct ScriptObject {
+    instance: DynamicManagedGc,
+    module: String,
+    type_name: String,
+    methods: HashMap<String, Option<FunctionHandle>>,
+    destroyed: bool,
+}
+
+impl ScriptObject {
+    pub fn create(
+        scripting: &mut Scripting,
+        game: &mut GameContext,
+        module: &str,
+        type_name: &str,
+        arguments: impl IntoIterator<Item = DynamicManagedGc>,
+    ) -> Option<Self> {
+        let function = scripting.find_method(module, type_name, CREATE_METHOD)?;
+        let instance = scripting.call(game, &function, arguments)?;
+        Some(Self {
+            instance,
+            module: module.to_owned(),
+            type_name: type_name.to_owned(),
+            methods: Default::default(),
+            destroyed: false,
+        })
+    }
+
+    pub fn instance(&self) -> &DynamicManagedGc {
+        &self.instance
+    }
+
+    pub fn destroy(
+        &mut self,
+        scripting: &mut Scripting,
+        game: &mut GameContext,
+    ) -> Option<DynamicManagedGc> {
+        if self.destroyed {
+            return None;
+        }
+        self.destroyed = true;
+        self.call(scripting, game, DESTROY_METHOD, [])
+    }
+
+    pub fn is_destroyed(&self) -> bool {
+        self.destroyed
+    }
+
+    pub fn has(&mut self, scripting: &Scripting, method: &str) -> bool {
+        self.method(scripting, method).is_some()
+    }
+
+    pub fn call(
+        &mut self,
+        scripting: &mut Scripting,
+        game: &mut GameContext,
+        method: &str,
+        arguments: impl IntoIterator<Item = DynamicManagedGc>,
+    ) -> Option<DynamicManagedGc> {
+        let function = self.method(scripting, method)?;
+        let mut values = vec![self.instance.reference()];
+        values.extend(arguments);
+        scripting.call(game, &function, values)
+    }
+
+    // A miss is cached too, so a method the script does not declare costs one
+    // registry walk and not one walk per frame.
+    fn method(&mut self, scripting: &Scripting, method: &str) -> Option<FunctionHandle> {
+        if let Some(function) = self.methods.get(method) {
+            return function.clone();
+        }
+        let function = scripting.find_method(&self.module, &self.type_name, method);
+        self.methods.insert(method.to_owned(), function.clone());
+        function
+    }
+}
+
+pub struct ScriptedGameState {
+    scripting: Scripting,
+    state: Option<DynamicManagedGc>,
+    enter: Option<FunctionHandle>,
+    exit: Option<FunctionHandle>,
+    update: Option<FunctionHandle>,
+    draw: Option<FunctionHandle>,
+}
+
+impl ScriptedGameState {
+    pub fn new(scripting: Scripting, module: &str) -> Self {
         Self {
-            stack_capacity: 10240,
-            registers_capacity: 10240,
+            enter: scripting.find(module, "enter"),
+            exit: scripting.find(module, "exit"),
+            update: scripting.find(module, "update"),
+            draw: scripting.find(module, "draw"),
+            scripting,
+            state: None,
+        }
+    }
+
+    pub fn scripting(&self) -> &Scripting {
+        &self.scripting
+    }
+
+    pub fn scripting_mut(&mut self) -> &mut Scripting {
+        &mut self.scripting
+    }
+
+    fn state(&self) -> DynamicManagedGc {
+        match self.state.as_ref() {
+            Some(state) => state.reference(),
+            None => DynamicManagedGc::new(()),
         }
     }
 }
 
-pub fn create_host(
-    config: ScriptingConfig,
-    script_contents: &[&str],
-    registry_setup: impl IntoIterator<Item = fn(&mut Registry)>,
-) {
-    let package = SimpletonPackage {
-        modules: script_contents
-            .iter()
-            .enumerate()
-            .map(|(index, content)| (index.to_string(), SimpletonModule::parse(content).unwrap()))
-            .collect(),
-    };
-    let mut registry = Registry::default();
-    library::install(&mut registry);
-    for setup in registry_setup.into_iter() {
-        (setup)(&mut registry);
-    }
-    package
-        .compile()
-        .install::<VmScope<SimpletonScriptExpression>>(&mut registry, None);
-    let context = Context::new(config.stack_capacity, config.registers_capacity);
-    let host = Host::new(context, registry.into());
-    if host.push_global().is_err() {
-        panic!("Could not make global scripting host!");
-    }
-}
-
-pub fn destroy_host() {
-    Host::pop_global();
-}
-
-pub fn call_function(name: &str, module_name: &str, args: &[Reference]) -> Reference {
-    Host::with_global(|host| {
-        let Some(handle) = host.find_function(name, module_name, None) else {
-            return Reference::null();
-        };
-        let (context, registry) = host.context_and_registry();
-        for arg in args.iter().rev() {
-            context.stack().push(arg.clone());
+impl GameState for ScriptedGameState {
+    fn enter(&mut self, mut context: GameContext) {
+        if let Some(function) = self.enter.clone() {
+            self.state = self.scripting.call(&mut context, &function, []);
         }
-        handle.invoke(context, registry);
-        context.stack().pop().unwrap_or_default()
-    })
-    .unwrap_or_default()
-}
+    }
 
-pub fn call_object(object: Reference, name: &str, args: &[Reference]) -> Reference {
-    Host::with_global(move |host| {
-        let Some(ty) = object.type_of() else {
-            return Reference::null();
-        };
-        let Some(ty) = ty.handle() else {
-            return Reference::null();
-        };
-        let Some(handle) = host.find_function(name, ty.module_name().unwrap_or_default(), None)
-        else {
-            return Reference::null();
-        };
-        let (context, registry) = host.context_and_registry();
-        for arg in args.iter().rev() {
-            context.stack().push(arg.clone());
+    fn exit(&mut self, mut context: GameContext) {
+        if let Some(function) = self.exit.clone() {
+            let state = self.state();
+            self.scripting.call(&mut context, &function, [state]);
         }
-        context.stack().push(object);
-        handle.invoke(context, registry);
-        context.stack().pop().unwrap_or_default()
-    })
-    .unwrap_or_default()
+    }
+
+    fn fixed_update(&mut self, mut context: GameContext, delta_time: f32) {
+        if let Some(function) = self.update.clone() {
+            let state = self.state();
+            self.scripting.call(
+                &mut context,
+                &function,
+                [state, DynamicManagedGc::new(delta_time as f64)],
+            );
+        }
+    }
+
+    fn draw(&mut self, mut context: GameContext) {
+        if let Some(function) = self.draw.clone() {
+            let state = self.state();
+            self.scripting.call(&mut context, &function, [state]);
+        }
+    }
 }
 
-pub fn new(type_name: &str, module_name: &str) -> Reference {
-    new_init(type_name, module_name, &[])
-}
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use ankha::parser::AnkhaContentParser;
 
-pub fn new_init(type_name: &str, module_name: &str, properties: &[(&str, Reference)]) -> Reference {
-    Host::with_global(move |host| {
-        let ty = Reference::new_type(
-            Type::by_name(type_name, module_name, host.registry()).unwrap(),
-            host.registry(),
-        );
-        let properties = Reference::new_map(
-            properties
-                .iter()
-                .map(|(name, value)| ((*name).to_owned(), value.clone()))
-                .collect(),
-            host.registry(),
-        );
-        library::reflect::new(ty, properties)
-    })
-    .unwrap_or_default()
-}
+    // No host functions, because ankha resolves every call when the script is
+    // installed. A script calling one that is not registered yet panics there.
+    const SOURCE: &str = r#"
+        mod test {
+            struct Thing {
+                value
+            }
 
-pub fn new_typed<T: 'static>(value: T) -> Reference {
-    Host::with_global(move |host| Reference::new(value, host.registry())).unwrap_or_default()
-}
+            fn Thing::create() {
+                Thing { value: 1i }
+            }
 
-pub fn get(object: Reference, field: &str) -> Reference {
-    object
-        .read_object()
-        .unwrap()
-        .read_field::<Reference>(field)
-        .unwrap()
-        .clone()
-}
+            fn Thing::get(self) {
+                self.value
+            }
 
-pub fn set(mut object: Reference, field: &str, value: Reference) {
-    *object
-        .write_object()
-        .unwrap()
-        .write_field::<Reference>(field)
-        .unwrap() = value;
+            fn plain(x) {
+                x
+            }
+        }
+    "#;
+
+    #[test]
+    fn test_script_installs() {
+        let file = AnkhaContentParser::default()
+            .with_setup(ankha_auri::install)
+            .parse_file_content(SOURCE)
+            .unwrap();
+        let mut scripting = Scripting::default();
+        scripting.install([("test.auri".to_owned(), file)]);
+        assert!(scripting.find("test", "plain").is_some());
+        assert!(scripting.find_method("test", "Thing", "create").is_some());
+        assert!(scripting.find_method("test", "Thing", "get").is_some());
+    }
 }

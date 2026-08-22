@@ -57,6 +57,7 @@ pub struct SpineSkeleton {
     textures: HashMap<String, SpriteTexture>,
     controller: RwLock<SkeletonController>,
     animation_events: Receiver<SpineEvent>,
+    pub slot_attachments_cache: HashMap<String, String>,
 }
 
 impl SpineSkeleton {
@@ -111,13 +112,16 @@ impl SpineSkeleton {
                 Some((name, texture))
             })
             .collect::<HashMap<_, _>>();
-        Self {
+        let mut result = Self {
             shader: None,
             uniforms: Default::default(),
             textures,
             controller: RwLock::new(controller),
             animation_events: receiver,
-        }
+            slot_attachments_cache: Default::default(),
+        };
+        result.cache_slot_attachments();
+        result
     }
 
     pub fn shader(mut self, value: ShaderRef) -> Self {
@@ -140,6 +144,48 @@ impl SpineSkeleton {
 
     pub fn poll_event(&self) -> Option<SpineEvent> {
         self.animation_events.try_recv().ok()
+    }
+
+    pub fn set_skin(&self, name: &str) -> Result<(), Box<dyn Error>> {
+        if let Ok(mut controller) = self.controller.try_write() {
+            controller.skeleton.set_skin_by_name(name)?;
+            controller.skeleton.update_world_transform(Physics::Pose);
+        }
+        Ok(())
+    }
+
+    pub fn cache_slot_attachments(&mut self) {
+        if let Ok(controller) = self.controller.try_read() {
+            for slot in controller.skeleton.slots() {
+                if let Some(attachment) = slot.attachment() {
+                    self.slot_attachments_cache
+                        .insert(slot.data().name().to_owned(), attachment.name().to_owned());
+                }
+            }
+        }
+    }
+
+    pub fn set_attachment(&self, slot_name: &str, attachment_name: Option<&str>) {
+        if let Ok(mut controller) = self.controller.try_write() {
+            controller
+                .skeleton
+                .set_attachment(slot_name, attachment_name);
+            controller.skeleton.update_world_transform(Physics::Pose);
+        }
+    }
+
+    pub fn show_cached_attachment(&self, slot_name: &str) {
+        if let Some(attachment_name) = self
+            .slot_attachments_cache
+            .get(slot_name)
+            .map(|s| s.as_str())
+        {
+            self.set_attachment(slot_name, Some(attachment_name));
+        }
+    }
+
+    pub fn hide_attachment(&self, slot_name: &str) {
+        self.set_attachment(slot_name, None);
     }
 
     pub fn play_animation(

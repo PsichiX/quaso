@@ -1,0 +1,7 @@
+{
+    "recipe": "index",
+    "data": [
+        "texture://ferris",
+        "font://roboto"
+    ]
+}

@@ -18,7 +18,6 @@ use crate::{
         },
     },
 };
-use anput::{scheduler::GraphScheduler, universe::Universe};
 use gilrs::Gilrs;
 use intuicio_data::managed::DynamicManagedLazy;
 use keket::database::AssetDatabase;
@@ -27,7 +26,6 @@ use moirai::{
     jobs::Jobs,
     queue::JobQueue,
 };
-use nodio::graph::Graph;
 use spitfire_draw::{
     context::DrawContext,
     utils::{ShaderRef, Vertex},
@@ -335,8 +333,6 @@ pub struct GameInstance {
     next_draw_queue: JobQueue,
     draw_gui_queue: JobQueue,
     next_draw_gui_queue: JobQueue,
-    universe: Universe,
-    graph: Graph,
     focused: bool,
     #[cfg(feature = "editor")]
     editor: crate::editor::Editor,
@@ -384,8 +380,6 @@ impl Default for GameInstance {
             next_draw_queue: Default::default(),
             draw_gui_queue: Default::default(),
             next_draw_gui_queue: Default::default(),
-            universe: Default::default(),
-            graph: Default::default(),
             focused: true,
             #[cfg(feature = "editor")]
             editor: Default::default(),
@@ -530,8 +524,6 @@ impl GameInstance {
                             fixed_update_queue: &self.next_fixed_update_queue,
                             draw_queue: &self.next_draw_queue,
                             draw_gui_queue: &self.next_draw_gui_queue,
-                            universe: &mut self.universe,
-                            graph: &mut self.graph,
                             state_heartbeat: &state_heartbeat,
                             subsystems: GameSubsystems {
                                 subsystems: &mut self.subsystems,
@@ -562,8 +554,6 @@ impl GameInstance {
                         fixed_update_queue: &self.next_fixed_update_queue,
                         draw_queue: &self.next_draw_queue,
                         draw_gui_queue: &self.next_draw_gui_queue,
-                        universe: &mut self.universe,
-                        graph: &mut self.graph,
                         state_heartbeat: &state_heartbeat,
                         subsystems: GameSubsystems {
                             subsystems: &mut self.subsystems,
@@ -591,8 +581,6 @@ impl GameInstance {
                         fixed_update_queue: &self.next_fixed_update_queue,
                         draw_queue: &self.next_draw_queue,
                         draw_gui_queue: &self.next_draw_gui_queue,
-                        universe: &mut self.universe,
-                        graph: &mut self.graph,
                         state_heartbeat: &state_heartbeat,
                         subsystems: GameSubsystems {
                             subsystems: &mut self.subsystems,
@@ -629,8 +617,6 @@ impl GameInstance {
                             fixed_update_queue: &self.next_fixed_update_queue,
                             draw_queue: &self.next_draw_queue,
                             draw_gui_queue: &self.next_draw_gui_queue,
-                            universe: &mut self.universe,
-                            graph: &mut self.graph,
                             state_heartbeat: &state_heartbeat,
                             subsystems: GameSubsystems {
                                 subsystems: &mut self.subsystems,
@@ -658,8 +644,6 @@ impl GameInstance {
                         fixed_update_queue: &self.next_fixed_update_queue,
                         draw_queue: &self.next_draw_queue,
                         draw_gui_queue: &self.next_draw_gui_queue,
-                        universe: &mut self.universe,
-                        graph: &mut self.graph,
                         state_heartbeat: &state_heartbeat,
                         subsystems: GameSubsystems {
                             subsystems: &mut self.subsystems,
@@ -687,8 +671,6 @@ impl GameInstance {
                         fixed_update_queue: &self.next_fixed_update_queue,
                         draw_queue: &self.next_draw_queue,
                         draw_gui_queue: &self.next_draw_gui_queue,
-                        universe: &mut self.universe,
-                        graph: &mut self.graph,
                         state_heartbeat: &state_heartbeat,
                         subsystems: GameSubsystems {
                             subsystems: &mut self.subsystems,
@@ -724,8 +706,6 @@ impl GameInstance {
                             fixed_update_queue: &self.next_fixed_update_queue,
                             draw_queue: &self.next_draw_queue,
                             draw_gui_queue: &self.next_draw_gui_queue,
-                            universe: &mut self.universe,
-                            graph: &mut self.graph,
                             state_heartbeat: &state_heartbeat,
                             subsystems: GameSubsystems {
                                 subsystems: &mut self.subsystems,
@@ -758,8 +738,6 @@ impl GameInstance {
                             fixed_update_queue: &self.next_fixed_update_queue,
                             draw_queue: &self.next_draw_queue,
                             draw_gui_queue: &self.next_draw_gui_queue,
-                            universe: &mut self.universe,
-                            graph: &mut self.graph,
                             state_heartbeat: &state_heartbeat,
                             subsystems: GameSubsystems {
                                 subsystems: &mut self.subsystems,
@@ -815,8 +793,6 @@ impl GameInstance {
                         fixed_update_queue: &self.next_fixed_update_queue,
                         draw_queue: &self.next_draw_queue,
                         draw_gui_queue: &self.next_draw_gui_queue,
-                        universe: &mut self.universe,
-                        graph: &mut self.graph,
                         state_heartbeat: &state_heartbeat,
                         subsystems: GameSubsystems {
                             subsystems: &mut self.subsystems,
@@ -845,8 +821,6 @@ impl GameInstance {
                         fixed_update_queue: &self.next_fixed_update_queue,
                         draw_queue: &self.next_draw_queue,
                         draw_gui_queue: &self.next_draw_gui_queue,
-                        universe: &mut self.universe,
-                        graph: &mut self.graph,
                         state_heartbeat: &state_heartbeat,
                         subsystems: GameSubsystems {
                             subsystems: &mut self.subsystems,
@@ -875,8 +849,6 @@ impl GameInstance {
                     fixed_update_queue: &self.next_fixed_update_queue,
                     draw_queue: &self.next_draw_queue,
                     draw_gui_queue: &self.next_draw_gui_queue,
-                    universe: &mut self.universe,
-                    graph: &mut self.graph,
                     state_heartbeat: &state_heartbeat,
                     subsystems: GameSubsystems {
                         subsystems: &mut self.subsystems,
@@ -908,8 +880,6 @@ impl GameInstance {
                         fixed_update_queue: &self.next_fixed_update_queue,
                         draw_queue: &self.next_draw_queue,
                         draw_gui_queue: &self.next_draw_gui_queue,
-                        universe: &mut self.universe,
-                        graph: &mut self.graph,
                         state_heartbeat: &state_heartbeat,
                         subsystems: GameSubsystems {
                             subsystems: &mut self.subsystems,
@@ -939,8 +909,6 @@ impl GameInstance {
                         fixed_update_queue: &self.next_fixed_update_queue,
                         draw_queue: &self.next_draw_queue,
                         draw_gui_queue: &self.next_draw_gui_queue,
-                        universe: &mut self.universe,
-                        graph: &mut self.graph,
                         state_heartbeat: &state_heartbeat,
                         subsystems: GameSubsystems {
                             subsystems: &mut [],
@@ -970,8 +938,6 @@ impl GameInstance {
                     fixed_update_queue: &self.next_fixed_update_queue,
                     draw_queue: &self.next_draw_queue,
                     draw_gui_queue: &self.next_draw_gui_queue,
-                    universe: &mut self.universe,
-                    graph: &mut self.graph,
                     state_heartbeat: &state_heartbeat,
                     subsystems: GameSubsystems {
                         subsystems: &mut self.subsystems,
@@ -1016,8 +982,6 @@ impl GameInstance {
                         fixed_update_queue: &self.next_fixed_update_queue,
                         draw_queue: &self.next_draw_queue,
                         draw_gui_queue: &self.next_draw_gui_queue,
-                        universe: &mut self.universe,
-                        graph: &mut self.graph,
                         state_heartbeat: &state_heartbeat,
                         subsystems: GameSubsystems {
                             subsystems: &mut self.subsystems,
@@ -1057,8 +1021,6 @@ impl GameInstance {
                             fixed_update_queue: &self.next_fixed_update_queue,
                             draw_queue: &self.next_draw_queue,
                             draw_gui_queue: &self.next_draw_gui_queue,
-                            universe: &mut self.universe,
-                            graph: &mut self.graph,
                             state_heartbeat: &state_heartbeat,
                             subsystems: GameSubsystems {
                                 subsystems: &mut self.subsystems,
@@ -1088,8 +1050,6 @@ impl GameInstance {
                             fixed_update_queue: &self.next_fixed_update_queue,
                             draw_queue: &self.next_draw_queue,
                             draw_gui_queue: &self.next_draw_gui_queue,
-                            universe: &mut self.universe,
-                            graph: &mut self.graph,
                             state_heartbeat: &state_heartbeat,
                             subsystems: GameSubsystems {
                                 subsystems: &mut [],
@@ -1120,8 +1080,6 @@ impl GameInstance {
                         fixed_update_queue: &self.next_fixed_update_queue,
                         draw_queue: &self.next_draw_queue,
                         draw_gui_queue: &self.next_draw_gui_queue,
-                        universe: &mut self.universe,
-                        graph: &mut self.graph,
                         state_heartbeat: &state_heartbeat,
                         subsystems: GameSubsystems {
                             subsystems: &mut self.subsystems,
@@ -1166,8 +1124,6 @@ impl GameInstance {
                             fixed_update_queue: &self.next_fixed_update_queue,
                             draw_queue: &self.next_draw_queue,
                             draw_gui_queue: &self.next_draw_gui_queue,
-                            universe: &mut self.universe,
-                            graph: &mut self.graph,
                             state_heartbeat: &state_heartbeat,
                             subsystems: GameSubsystems {
                                 subsystems: &mut self.subsystems,
@@ -1212,8 +1168,6 @@ impl GameInstance {
                 fixed_update_queue: &self.next_fixed_update_queue,
                 draw_queue: &self.next_draw_queue,
                 draw_gui_queue: &self.next_draw_gui_queue,
-                universe: &mut self.universe,
-                graph: &mut self.graph,
                 state_heartbeat: &state_heartbeat,
                 subsystems: GameSubsystems {
                     subsystems: &mut self.subsystems,
@@ -1240,8 +1194,6 @@ impl GameInstance {
                 fixed_update_queue: &self.next_fixed_update_queue,
                 draw_queue: &self.next_draw_queue,
                 draw_gui_queue: &self.next_draw_gui_queue,
-                universe: &mut self.universe,
-                graph: &mut self.graph,
                 state_heartbeat: &state_heartbeat,
                 subsystems: GameSubsystems {
                     subsystems: &mut [],
@@ -1269,8 +1221,6 @@ impl GameInstance {
                 fixed_update_queue: &self.next_fixed_update_queue,
                 draw_queue: &self.next_draw_queue,
                 draw_gui_queue: &self.next_draw_gui_queue,
-                universe: &mut self.universe,
-                graph: &mut self.graph,
                 state_heartbeat: &state_heartbeat,
                 subsystems: GameSubsystems {
                     subsystems: &mut self.subsystems,
@@ -1314,8 +1264,6 @@ impl GameInstance {
                     fixed_update_queue: &self.next_fixed_update_queue,
                     draw_queue: &self.next_draw_queue,
                     draw_gui_queue: &self.next_draw_gui_queue,
-                    universe: &mut self.universe,
-                    graph: &mut self.graph,
                     state_heartbeat: &state_heartbeat,
                     subsystems: GameSubsystems {
                         subsystems: &mut self.subsystems,
@@ -1349,8 +1297,6 @@ impl GameInstance {
                 fixed_update_queue: &self.next_fixed_update_queue,
                 draw_queue: &self.next_draw_queue,
                 draw_gui_queue: &self.next_draw_gui_queue,
-                universe: &mut self.universe,
-                graph: &mut self.graph,
                 state_heartbeat: &state_heartbeat,
                 subsystems: GameSubsystems {
                     subsystems: &mut self.subsystems,
@@ -1377,8 +1323,6 @@ impl GameInstance {
                 fixed_update_queue: &self.next_fixed_update_queue,
                 draw_queue: &self.next_draw_queue,
                 draw_gui_queue: &self.next_draw_gui_queue,
-                universe: &mut self.universe,
-                graph: &mut self.graph,
                 state_heartbeat: &state_heartbeat,
                 subsystems: GameSubsystems {
                     subsystems: &mut [],
@@ -1406,8 +1350,6 @@ impl GameInstance {
                 fixed_update_queue: &self.next_fixed_update_queue,
                 draw_queue: &self.next_draw_queue,
                 draw_gui_queue: &self.next_draw_gui_queue,
-                universe: &mut self.universe,
-                graph: &mut self.graph,
                 state_heartbeat: &state_heartbeat,
                 subsystems: GameSubsystems {
                     subsystems: &mut self.subsystems,
@@ -1451,8 +1393,6 @@ impl GameInstance {
                     fixed_update_queue: &self.next_fixed_update_queue,
                     draw_queue: &self.next_draw_queue,
                     draw_gui_queue: &self.next_draw_gui_queue,
-                    universe: &mut self.universe,
-                    graph: &mut self.graph,
                     state_heartbeat: &state_heartbeat,
                     subsystems: GameSubsystems {
                         subsystems: &mut self.subsystems,
@@ -1479,8 +1419,6 @@ impl GameInstance {
                 fixed_update_queue: &self.next_fixed_update_queue,
                 draw_queue: &self.next_draw_queue,
                 draw_gui_queue: &self.next_draw_gui_queue,
-                universe: &mut self.universe,
-                graph: &mut self.graph,
                 state_heartbeat: &state_heartbeat,
                 subsystems: GameSubsystems {
                     subsystems: &mut self.subsystems,
@@ -1502,17 +1440,6 @@ impl GameInstance {
         if !self.input_maintain_on_fixed_step || fixed_step {
             self.input.maintain();
         }
-
-        GraphScheduler::<true>
-            .run_systems(
-                &self.jobs.jobs,
-                &self.universe,
-                GraphScheduler::<true>::collect_roots(&self.universe.systems),
-                Default::default(),
-            )
-            .unwrap();
-        self.universe.clear_changes();
-        self.universe.execute_commands::<true>();
 
         if !self.next_frame_queue.is_empty() {
             self.jobs.jobs.submit_queue(&self.next_frame_queue);
@@ -1541,8 +1468,6 @@ impl GameInstance {
                 fixed_update_queue: &self.next_fixed_update_queue,
                 draw_queue: &self.next_draw_queue,
                 draw_gui_queue: &self.next_draw_gui_queue,
-                universe: &mut self.universe,
-                graph: &mut self.graph,
                 state_heartbeat: &state_heartbeat,
                 subsystems: GameSubsystems {
                     subsystems: &mut self.subsystems,
@@ -1620,8 +1545,6 @@ impl AppState<Vertex> for GameInstance {
                 fixed_update_queue: &self.next_fixed_update_queue,
                 draw_queue: &self.next_draw_queue,
                 draw_gui_queue: &self.next_draw_gui_queue,
-                universe: &mut self.universe,
-                graph: &mut self.graph,
                 state_heartbeat: &state_heartbeat,
                 subsystems: GameSubsystems {
                     subsystems: &mut self.subsystems,

@@ -1,5 +1,7 @@
 pub mod third_party {
     pub use anim8;
+    pub use ankha;
+    pub use ankha_auri;
     pub use anput;
     pub use base64;
     pub use emergent;
@@ -10,15 +12,13 @@ pub mod third_party {
     #[cfg(not(target_arch = "wasm32"))]
     pub use glutin as windowing;
     pub use image;
-    pub use intuicio_backend_vm;
     pub use intuicio_core;
     pub use intuicio_data;
     pub use intuicio_derive;
-    pub use intuicio_frontend_simpleton;
-    pub use intuicio_parser;
     pub use keket;
     pub use kira;
     pub use moirai;
+    pub use moirai_pump;
     pub use nodio;
     pub use noise;
     pub use paste;

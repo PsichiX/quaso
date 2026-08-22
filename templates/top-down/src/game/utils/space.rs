@@ -82,7 +82,7 @@ impl Space {
     }
 
     pub fn nearest(&self, position: Vec2<f32>) -> impl Iterator<Item = &SpaceObject> {
-        self.tree.nearest_neighbor_iter(&[position.x, position.y])
+        self.tree.nearest_neighbor_iter([position.x, position.y])
     }
 
     pub fn nearest_in_range(
@@ -110,7 +110,7 @@ impl Space {
         narrow: bool,
     ) -> impl Iterator<Item = &'a SpaceObject> {
         self.tree
-            .locate_in_envelope_intersecting(&object.envelope())
+            .locate_in_envelope_intersecting(object.envelope())
             .filter(move |item| !narrow || object.does_collide_narrow(item))
     }
 

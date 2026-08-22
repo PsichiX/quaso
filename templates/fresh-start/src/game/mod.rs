@@ -1,14 +1,12 @@
 pub mod states;
 
-use crate::game::states::gameplay::Gameplay;
+use crate::game::states::preloader::Preloader;
 use quaso::{GameLauncher, assets::make_memory_database, config::Config, game::GameInstance};
 
 pub fn main() {
-    GameLauncher::new(
-        GameInstance::new(Gameplay::default()).setup_assets(|assets| {
-            *assets = make_memory_database(include_bytes!("../../assets.pack")).unwrap();
-        }),
-    )
+    GameLauncher::new(GameInstance::new(Preloader).setup_assets(|assets| {
+        *assets = make_memory_database(include_bytes!("../../assets.pack")).unwrap();
+    }))
     .title("Quaso")
     .config(
         Config::load_from_str(include_str!("../../assets/GameConfig.toml"))

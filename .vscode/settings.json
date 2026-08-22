@@ -1,0 +1,8 @@
+{
+  "files.associations": {
+    "*.auri": "rust"
+  },
+ "rust-analyzer.files.exclude": [
+    "resources"
+  ]
+}
