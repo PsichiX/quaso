@@ -40,7 +40,9 @@ use quaso::{
             graphics::CameraScaling,
             renderer::{GlowBlending, GlowTextureFiltering, GlowTextureFormat, GlowUniformValue},
         },
-        spitfire_input::{InputActionRef, InputConsume, InputMapping, VirtualAction},
+        spitfire_input::{
+            InputActionRef, InputConsume, InputMapping, InputMappingRef, VirtualAction,
+        },
         typid::ID,
         windowing::event::VirtualKeyCode,
     },
@@ -55,7 +57,7 @@ pub struct Gameplay {
     torch: Torch,
     darkness: Option<Canvas>,
     exit: InputActionRef,
-    exit_handle: Option<ID<InputMapping>>,
+    exit_handle: Option<InputMappingRef>,
     map_radius: f32,
     music_forest: Option<StaticSoundHandle>,
     music_battle: Option<StaticSoundHandle>,
@@ -153,9 +155,8 @@ impl GameState for Gameplay {
             enemy.deactivate(&mut context);
         }
 
-        if let Some(id) = self.exit_handle {
-            context.input.remove_mapping(id);
-            self.exit_handle = None;
+        if let Some(id) = self.exit_handle.take() {
+            context.input.remove_mapping(&id);
         }
 
         if let Some(handle) = self.music_forest.as_mut() {

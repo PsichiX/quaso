@@ -1,7 +1,6 @@
 use crate::{context::GameContext, game::GameObject, gc::Gc};
 use emergent::task::Task;
-use spitfire_input::{InputMapping, InputMappingRef};
-use typid::ID;
+use spitfire_input::InputMappingRef;
 
 pub struct CharacterMemory<State> {
     pub delta_time: f32,
@@ -14,7 +13,7 @@ pub enum CharacterController<State> {
     None,
     Input {
         mapping: InputMappingRef,
-        id: Option<ID<InputMapping>>,
+        id: Option<InputMappingRef>,
     },
     Ai(Box<dyn Task<CharacterMemory<State>>>),
 }
@@ -86,7 +85,7 @@ impl<State: GameObject> GameObject for Character<State> {
             CharacterController::None => {}
             CharacterController::Input { id, .. } => {
                 if let Some(id) = id {
-                    context.input.remove_mapping(*id);
+                    context.input.remove_mapping(id);
                 }
                 *id = None;
             }

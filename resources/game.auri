@@ -4,8 +4,8 @@
 // the value `Player::create` returns and calls the methods back on that value
 // when the matching game state event happens.
 //
-// `draw_sprite` and `input_down` are host functions quaso registers. They are
-// how the script reaches the game.
+// `print`, `text`, `draw_sprite` and `input_down` are host functions the
+// example registers. They are how the script reaches the game.
 
 mod player {
     struct Player {
@@ -14,12 +14,17 @@ mod player {
         texture
     }
 
+    // `text` turns a number into something `+` can join to a string. The
+    // player is handed back with `move`, so the host gets the owner and the
+    // object outlives this call.
     fn Player::create(texture) {
-        Player { x: 0.0f, y: 0.0f, texture: texture }
+        let player = Player { x: 0.0f, y: 0.0f, texture: texture };
+        print("Created player at " + text(player.x) + ", " + text(player.y));
+        move player
     }
 
     fn Player::destroy(self) {
-        print("Destroying player with texture: " + self.texture);
+        print("Destroying player at " + text(self.x) + ", " + text(self.y));
     }
 
     fn Player::update(self, delta_time) {

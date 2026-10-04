@@ -2,14 +2,17 @@
 use crate::editor::EditorInput;
 use crate::{
     assets::{
-        anim_texture::AnimTextureAssetSubsystem, font::FontAssetSubsystem,
-        gltf::GltfAssetSubsystem, shader::ShaderAssetSubsystem, sound::SoundAssetSubsystem,
-        texture::TextureAssetSubsystem,
+        anim_texture::AnimTextureAssetSubsystem, auri::AuriAssetSubsystem,
+        font::FontAssetSubsystem, gltf::GltfAssetSubsystem, shader::ShaderAssetSubsystem,
+        sound::SoundAssetSubsystem, texture::TextureAssetSubsystem,
     },
     audio::Audio,
+    commands::{GameCommand, GameCommands},
     context::{GameContext, GameSubsystems},
     gc::{DynGc, Gc},
+    input::GameInputControl,
     multiplayer::{GameMultiplayer, GameMultiplayerChange, GameNetwork, local::LocalMultiplayer},
+    scripting::Scripting,
     third_party::{
         time::{Duration, Instant},
         windowing::{
@@ -173,6 +176,13 @@ impl EditorGlobals {
         self.is_editing
     }
 
+    // Edit mode otherwise only toggles on a real key event, which a command
+    // cannot produce. Without this an agent that finds the game in edit mode
+    // cannot get it running again.
+    pub fn set_editing(&mut self, value: bool) {
+        self.is_editing = value;
+    }
+
     pub fn viewport_rectangle(&self) -> Rect<f32, f32> {
         self.viewport_rectangle
     }
@@ -191,9 +201,166 @@ impl EditorGlobals {
     }
 }
 
+#[derive(Debug, Clone)]
+pub struct GameTimeControl {
+    paused: bool,
+    time_scale: f32,
+    pending_steps: usize,
+    accumulator: f32,
+    total: f64,
+    step: f32,
+    steps_last_frame: usize,
+    total_steps: u64,
+    dropped_steps: usize,
+}
+
+impl Default for GameTimeControl {
+    fn default() -> Self {
+        Self {
+            paused: false,
+            time_scale: 1.0,
+            pending_steps: 0,
+            accumulator: 0.0,
+            total: 0.0,
+            step: 0.0,
+            steps_last_frame: 0,
+            total_steps: 0,
+            dropped_steps: 0,
+        }
+    }
+}
+
+impl GameTimeControl {
+    pub fn is_paused(&self) -> bool {
+        self.paused
+    }
+
+    pub fn set_paused(&mut self, value: bool) {
+        self.paused = value;
+    }
+
+    pub fn pause(&mut self) {
+        self.paused = true;
+    }
+
+    pub fn resume(&mut self) {
+        self.paused = false;
+    }
+
+    pub fn time_scale(&self) -> f32 {
+        self.time_scale
+    }
+
+    pub fn set_time_scale(&mut self, value: f32) {
+        self.time_scale = value.max(0.0);
+    }
+
+    pub fn request_steps(&mut self, count: usize) {
+        self.pending_steps = self.pending_steps.saturating_add(count);
+    }
+
+    pub fn pending_steps(&self) -> usize {
+        self.pending_steps
+    }
+
+    pub fn cancel_pending_steps(&mut self) {
+        self.pending_steps = 0;
+    }
+
+    pub fn steps_last_frame(&self) -> usize {
+        self.steps_last_frame
+    }
+
+    // Counts every fixed step the game has run. It only ever grows, so a reader
+    // that remembers the last value it saw learns how many steps happened since,
+    // no matter which frames it looked on. `steps_last_frame` cannot do that,
+    // because it holds a stale value on any frame that skips the update phase.
+    pub fn total_steps(&self) -> u64 {
+        self.total_steps
+    }
+
+    pub fn dropped_steps(&self) -> usize {
+        self.dropped_steps
+    }
+
+    pub fn total_time(&self) -> f32 {
+        self.total as f32
+    }
+
+    pub fn step(&self) -> f32 {
+        self.step
+    }
+
+    fn advance(&mut self, delta_time: f32, unfocused_divisor: f32) -> f32 {
+        if self.paused {
+            return 0.0;
+        }
+        let scaled = delta_time * self.time_scale / unfocused_divisor;
+        self.accumulator += scaled;
+        self.total += scaled as f64;
+        scaled
+    }
+
+    fn take_steps(&mut self, step: f32, max_per_frame: usize) -> usize {
+        self.step = step;
+        let mut count = 0;
+        if step > 0.0 && max_per_frame > 0 {
+            count = self.pending_steps.min(max_per_frame);
+            self.pending_steps -= count;
+            if self.paused {
+                self.total += (count as f32 * step) as f64;
+            } else {
+                while count < max_per_frame && self.accumulator >= step {
+                    self.accumulator -= step;
+                    count += 1;
+                }
+                if self.accumulator >= step {
+                    self.dropped_steps += (self.accumulator / step) as usize;
+                    self.accumulator %= step;
+                }
+            }
+        }
+        self.steps_last_frame = count;
+        self.total_steps = self.total_steps.saturating_add(count as u64);
+        count
+    }
+}
+
+#[derive(Debug, Default, Clone)]
+pub struct GameAppControl {
+    close_requested: bool,
+    fullscreen: bool,
+    fullscreen_request: Option<bool>,
+}
+
+impl GameAppControl {
+    pub fn request_close(&mut self) {
+        self.close_requested = true;
+    }
+
+    pub fn cancel_close(&mut self) {
+        self.close_requested = false;
+    }
+
+    pub fn is_close_requested(&self) -> bool {
+        self.close_requested
+    }
+
+    pub fn set_fullscreen(&mut self, fullscreen: bool) {
+        self.fullscreen_request = Some(fullscreen);
+    }
+
+    pub fn is_fullscreen(&self) -> bool {
+        self.fullscreen_request.unwrap_or(self.fullscreen)
+    }
+}
+
 pub struct GameGlobals {
     globals: BTreeMap<TypeId, DynGc>,
     is_touch_device: LazyCell<bool>,
+    pub time: GameTimeControl,
+    pub app: GameAppControl,
+    pub input: GameInputControl,
     #[cfg(feature = "editor")]
     pub editor: EditorGlobals,
 }
@@ -226,6 +393,9 @@ impl Default for GameGlobals {
                     cfg!(target_os = "android") || cfg!(target_os = "ios")
                 }
             }),
+            time: Default::default(),
+            app: Default::default(),
+            input: Default::default(),
             #[cfg(feature = "editor")]
             editor: Default::default(),
         }
@@ -306,20 +476,21 @@ pub struct GameInstance {
     pub image_shader: &'static str,
     pub text_shader: &'static str,
     pub input_maintain_on_fixed_step: bool,
+    pub max_fixed_steps_per_frame: usize,
+    commands: GameCommands,
     draw: DrawContext,
     gui: GuiContext,
     input: InputContext,
     assets: AssetDatabase,
     audio: Audio,
     timer: Instant,
-    fixed_timer: Instant,
-    total_timer: Instant,
     frame: usize,
     #[allow(clippy::type_complexity)]
     states: Vec<(Box<dyn GameState>, JobHandle<()>, Gc<()>)>,
     state_change: GameStateChange,
     subsystems: Vec<Box<dyn GameSubsystem>>,
     globals: GameGlobals,
+    scripting: Scripting,
     jobs: GameJobs,
     network: GameNetwork,
     multiplayer: Box<dyn GameMultiplayer>,
@@ -347,14 +518,14 @@ impl Default for GameInstance {
             image_shader: "image",
             text_shader: "text",
             input_maintain_on_fixed_step: true,
+            max_fixed_steps_per_frame: 8,
+            commands: Default::default(),
             draw: Default::default(),
             gui: Default::default(),
             input: Default::default(),
             assets: Default::default(),
             audio: Default::default(),
             timer: Instant::now(),
-            fixed_timer: Instant::now(),
-            total_timer: Instant::now(),
             frame: 0,
             states: Default::default(),
             state_change: Default::default(),
@@ -365,8 +536,10 @@ impl Default for GameInstance {
                 Box::new(FontAssetSubsystem),
                 Box::new(SoundAssetSubsystem),
                 Box::new(GltfAssetSubsystem),
+                Box::new(AuriAssetSubsystem),
             ],
             globals: Default::default(),
+            scripting: Default::default(),
             jobs: Default::default(),
             network: Default::default(),
             multiplayer: Box::new(LocalMultiplayer::default()),
@@ -436,6 +609,54 @@ impl GameInstance {
         self
     }
 
+    pub fn with_max_fixed_steps_per_frame(mut self, value: usize) -> Self {
+        self.max_fixed_steps_per_frame = value;
+        self
+    }
+
+    pub fn with_commands(mut self, commands: GameCommands) -> Self {
+        self.commands = commands;
+        self
+    }
+
+    // Dropping the returned server does not stop it. The accept thread and every
+    // connection thread live until the process ends, which is what a dev only
+    // control port wants: the game keeps answering for as long as it runs.
+    #[cfg(all(feature = "agent", not(target_arch = "wasm32")))]
+    pub fn with_agent_server(self, config: crate::agent::AgentServerConfig) -> Self {
+        if let Err(error) = crate::agent::AgentServer::start(self.commands.handle(), config) {
+            tracing::event!(
+                target: "quaso::agent",
+                tracing::Level::ERROR,
+                "{}",
+                error
+            );
+        }
+        self
+    }
+
+    pub fn with_command(mut self, command: GameCommand) -> Self {
+        if let Err(error) = self.commands.register(command) {
+            tracing::event!(
+                target: "quaso::commands",
+                tracing::Level::ERROR,
+                "{}",
+                error
+            );
+        }
+        self
+    }
+
+    pub fn with_paused(mut self, value: bool) -> Self {
+        self.globals.time.set_paused(value);
+        self
+    }
+
+    pub fn with_time_scale(mut self, value: f32) -> Self {
+        self.globals.time.set_time_scale(value);
+        self
+    }
+
     pub fn with_subsystem(mut self, subsystem: impl GameSubsystem + 'static) -> Self {
         self.subsystems.push(Box::new(subsystem));
         self
@@ -497,8 +718,24 @@ impl GameInstance {
         self.fixed_delta_time = 1.0 / frames_per_second as f32;
     }
 
+    pub fn time(&self) -> &GameTimeControl {
+        &self.globals.time
+    }
+
+    pub fn time_mut(&mut self) -> &mut GameTimeControl {
+        &mut self.globals.time
+    }
+
+    pub fn commands(&self) -> &GameCommands {
+        &self.commands
+    }
+
+    pub fn commands_mut(&mut self) -> &mut GameCommands {
+        &mut self.commands
+    }
+
     pub fn process_frame(&mut self, graphics: &mut Graphics<Vertex>) {
-        let total_time = self.total_timer.elapsed().as_secs_f32();
+        let total_time = self.globals.time.total_time();
 
         loop {
             match std::mem::take(&mut self.state_change) {
@@ -517,6 +754,7 @@ impl GameInstance {
                             assets: &mut self.assets,
                             audio: &mut self.audio,
                             globals: &mut self.globals,
+                            scripting: Some(&mut self.scripting),
                             jobs: Some(&self.jobs),
                             network: &mut self.network,
                             multiplayer: Some(&mut *self.multiplayer),
@@ -547,6 +785,7 @@ impl GameInstance {
                         assets: &mut self.assets,
                         audio: &mut self.audio,
                         globals: &mut self.globals,
+                        scripting: Some(&mut self.scripting),
                         jobs: Some(&self.jobs),
                         network: &mut self.network,
                         multiplayer: Some(&mut *self.multiplayer),
@@ -574,6 +813,7 @@ impl GameInstance {
                         assets: &mut self.assets,
                         audio: &mut self.audio,
                         globals: &mut self.globals,
+                        scripting: Some(&mut self.scripting),
                         jobs: Some(&self.jobs),
                         network: &mut self.network,
                         multiplayer: Some(&mut *self.multiplayer),
@@ -610,6 +850,7 @@ impl GameInstance {
                             assets: &mut self.assets,
                             audio: &mut self.audio,
                             globals: &mut self.globals,
+                            scripting: Some(&mut self.scripting),
                             jobs: Some(&self.jobs),
                             network: &mut self.network,
                             multiplayer: Some(&mut *self.multiplayer),
@@ -637,6 +878,7 @@ impl GameInstance {
                         assets: &mut self.assets,
                         audio: &mut self.audio,
                         globals: &mut self.globals,
+                        scripting: Some(&mut self.scripting),
                         jobs: Some(&self.jobs),
                         network: &mut self.network,
                         multiplayer: Some(&mut *self.multiplayer),
@@ -664,6 +906,7 @@ impl GameInstance {
                         assets: &mut self.assets,
                         audio: &mut self.audio,
                         globals: &mut self.globals,
+                        scripting: Some(&mut self.scripting),
                         jobs: Some(&self.jobs),
                         network: &mut self.network,
                         multiplayer: Some(&mut *self.multiplayer),
@@ -699,6 +942,7 @@ impl GameInstance {
                             assets: &mut self.assets,
                             audio: &mut self.audio,
                             globals: &mut self.globals,
+                            scripting: Some(&mut self.scripting),
                             jobs: Some(&self.jobs),
                             network: &mut self.network,
                             multiplayer: Some(&mut *self.multiplayer),
@@ -731,6 +975,7 @@ impl GameInstance {
                             assets: &mut self.assets,
                             audio: &mut self.audio,
                             globals: &mut self.globals,
+                            scripting: Some(&mut self.scripting),
                             jobs: Some(&self.jobs),
                             network: &mut self.network,
                             multiplayer: Some(&mut *self.multiplayer),
@@ -755,9 +1000,19 @@ impl GameInstance {
         self.frame += 1;
         #[cfg(feature = "editor")]
         let is_editing = self.globals.editor.is_editing();
-        let mut delta_time = self.timer.elapsed().as_secs_f32();
+        let real_delta_time = self.timer.elapsed().as_secs_f32();
         let jobs_timer = self.timer;
         self.timer = Instant::now();
+        let unfocused_divisor = if self.focused {
+            1.0
+        } else {
+            self.unfocused_fixed_delta_time_scale.max(f32::EPSILON)
+        };
+        let mut delta_time = self
+            .globals
+            .time
+            .advance(real_delta_time, unfocused_divisor);
+        let total_time = self.globals.time.total_time();
         let frame_budget = Duration::from_secs_f32(self.fixed_delta_time);
         let Some(state_value) = self.states.last().map(|(_, _, value)| value) else {
             return;
@@ -786,6 +1041,7 @@ impl GameInstance {
                         assets: &mut self.assets,
                         audio: &mut self.audio,
                         globals: &mut self.globals,
+                        scripting: Some(&mut self.scripting),
                         jobs: Some(&self.jobs),
                         network: &mut self.network,
                         multiplayer: None,
@@ -814,6 +1070,7 @@ impl GameInstance {
                         assets: &mut self.assets,
                         audio: &mut self.audio,
                         globals: &mut self.globals,
+                        scripting: Some(&mut self.scripting),
                         jobs: Some(&self.jobs),
                         network: &mut self.network,
                         multiplayer: None,
@@ -842,6 +1099,7 @@ impl GameInstance {
                     assets: &mut self.assets,
                     audio: &mut self.audio,
                     globals: &mut self.globals,
+                    scripting: Some(&mut self.scripting),
                     jobs: Some(&self.jobs),
                     network: &mut self.network,
                     multiplayer: None,
@@ -860,6 +1118,38 @@ impl GameInstance {
             );
         }
 
+        // The command queue is drained outside `update_phase` on purpose. The
+        // editor skips `update_phase` while it is editing, and a game that
+        // answers no command in that mode is unreachable for an agent: it could
+        // not even resume time or close the window.
+        self.commands.process(&mut GameContext {
+            graphics,
+            draw: &mut self.draw,
+            gui: &mut self.gui,
+            input: &mut self.input,
+            state_change: &mut self.state_change,
+            multiplayer_change: &mut self.multiplayer_change,
+            assets: &mut self.assets,
+            audio: &mut self.audio,
+            globals: &mut self.globals,
+            scripting: Some(&mut self.scripting),
+            jobs: Some(&self.jobs),
+            network: &mut self.network,
+            multiplayer: Some(&mut *self.multiplayer),
+            update_queue: &self.next_update_queue,
+            fixed_update_queue: &self.next_fixed_update_queue,
+            draw_queue: &self.next_draw_queue,
+            draw_gui_queue: &self.next_draw_gui_queue,
+            state_heartbeat: &state_heartbeat,
+            subsystems: GameSubsystems {
+                subsystems: &mut self.subsystems,
+            },
+            time: total_time,
+            frame: self.frame,
+        });
+        let total_steps = self.globals.time.total_steps();
+        self.globals.input.apply(&self.input, total_steps);
+
         let mut update_phase = || {
             if let Some((state, _, _)) = self.states.last_mut() {
                 state.update(
@@ -873,6 +1163,7 @@ impl GameInstance {
                         assets: &mut self.assets,
                         audio: &mut self.audio,
                         globals: &mut self.globals,
+                        scripting: Some(&mut self.scripting),
                         jobs: Some(&self.jobs),
                         network: &mut self.network,
                         multiplayer: Some(&mut *self.multiplayer),
@@ -902,6 +1193,7 @@ impl GameInstance {
                         assets: &mut self.assets,
                         audio: &mut self.audio,
                         globals: &mut self.globals,
+                        scripting: Some(&mut self.scripting),
                         jobs: Some(&self.jobs),
                         network: &mut self.network,
                         multiplayer: Some(&mut *self.multiplayer),
@@ -931,6 +1223,7 @@ impl GameInstance {
                     assets: &mut self.assets,
                     audio: &mut self.audio,
                     globals: &mut self.globals,
+                    scripting: Some(&mut self.scripting),
                     jobs: None,
                     network: &mut self.network,
                     multiplayer: Some(&mut *self.multiplayer),
@@ -975,6 +1268,7 @@ impl GameInstance {
                         assets: &mut self.assets,
                         audio: &mut self.audio,
                         globals: &mut self.globals,
+                        scripting: Some(&mut self.scripting),
                         jobs: Some(&self.jobs),
                         network: &mut self.network,
                         multiplayer: Some(&mut *self.multiplayer),
@@ -993,15 +1287,14 @@ impl GameInstance {
                 );
             }
 
-            let mut fixed_delta_time = self.fixed_timer.elapsed().as_secs_f32();
-            let fixed_delta_time_limit = if self.focused {
-                self.fixed_delta_time
-            } else {
-                self.fixed_delta_time * self.unfocused_fixed_delta_time_scale
-            };
+            let mut fixed_delta_time = self.fixed_delta_time;
+            let max_fixed_steps_per_frame = self.max_fixed_steps_per_frame;
+            let steps = self
+                .globals
+                .time
+                .take_steps(fixed_delta_time, max_fixed_steps_per_frame);
 
-            if fixed_delta_time > fixed_delta_time_limit {
-                self.fixed_timer = Instant::now();
+            for _ in 0..steps {
                 if let Some((state, _, _)) = self.states.last_mut() {
                     state.fixed_update(
                         GameContext {
@@ -1014,6 +1307,7 @@ impl GameInstance {
                             assets: &mut self.assets,
                             audio: &mut self.audio,
                             globals: &mut self.globals,
+                            scripting: Some(&mut self.scripting),
                             jobs: Some(&self.jobs),
                             network: &mut self.network,
                             multiplayer: Some(&mut *self.multiplayer),
@@ -1043,6 +1337,7 @@ impl GameInstance {
                             assets: &mut self.assets,
                             audio: &mut self.audio,
                             globals: &mut self.globals,
+                            scripting: Some(&mut self.scripting),
                             jobs: Some(&self.jobs),
                             network: &mut self.network,
                             multiplayer: Some(&mut *self.multiplayer),
@@ -1073,6 +1368,7 @@ impl GameInstance {
                         assets: &mut self.assets,
                         audio: &mut self.audio,
                         globals: &mut self.globals,
+                        scripting: Some(&mut self.scripting),
                         jobs: None,
                         network: &mut self.network,
                         multiplayer: Some(&mut *self.multiplayer),
@@ -1117,6 +1413,7 @@ impl GameInstance {
                             assets: &mut self.assets,
                             audio: &mut self.audio,
                             globals: &mut self.globals,
+                            scripting: Some(&mut self.scripting),
                             jobs: Some(&self.jobs),
                             network: &mut self.network,
                             multiplayer: Some(&mut *self.multiplayer),
@@ -1134,10 +1431,8 @@ impl GameInstance {
                         fixed_delta_time,
                     );
                 }
-                true
-            } else {
-                false
             }
+            steps > 0
         };
         #[cfg(feature = "editor")]
         let fixed_step = if is_editing { false } else { update_phase() };
@@ -1161,6 +1456,7 @@ impl GameInstance {
                 assets: &mut self.assets,
                 audio: &mut self.audio,
                 globals: &mut self.globals,
+                scripting: Some(&mut self.scripting),
                 jobs: Some(&self.jobs),
                 network: &mut self.network,
                 multiplayer: Some(&mut *self.multiplayer),
@@ -1187,6 +1483,7 @@ impl GameInstance {
                 assets: &mut self.assets,
                 audio: &mut self.audio,
                 globals: &mut self.globals,
+                scripting: Some(&mut self.scripting),
                 jobs: Some(&self.jobs),
                 network: &mut self.network,
                 multiplayer: Some(&mut *self.multiplayer),
@@ -1214,6 +1511,7 @@ impl GameInstance {
                 assets: &mut self.assets,
                 audio: &mut self.audio,
                 globals: &mut self.globals,
+                scripting: Some(&mut self.scripting),
                 jobs: None,
                 network: &mut self.network,
                 multiplayer: Some(&mut *self.multiplayer),
@@ -1257,6 +1555,7 @@ impl GameInstance {
                     assets: &mut self.assets,
                     audio: &mut self.audio,
                     globals: &mut self.globals,
+                    scripting: Some(&mut self.scripting),
                     jobs: Some(&self.jobs),
                     network: &mut self.network,
                     multiplayer: Some(&mut *self.multiplayer),
@@ -1290,6 +1589,7 @@ impl GameInstance {
                 assets: &mut self.assets,
                 audio: &mut self.audio,
                 globals: &mut self.globals,
+                scripting: Some(&mut self.scripting),
                 jobs: Some(&self.jobs),
                 network: &mut self.network,
                 multiplayer: Some(&mut *self.multiplayer),
@@ -1316,6 +1616,7 @@ impl GameInstance {
                 assets: &mut self.assets,
                 audio: &mut self.audio,
                 globals: &mut self.globals,
+                scripting: Some(&mut self.scripting),
                 jobs: Some(&self.jobs),
                 network: &mut self.network,
                 multiplayer: Some(&mut *self.multiplayer),
@@ -1343,6 +1644,7 @@ impl GameInstance {
                 assets: &mut self.assets,
                 audio: &mut self.audio,
                 globals: &mut self.globals,
+                scripting: Some(&mut self.scripting),
                 jobs: None,
                 network: &mut self.network,
                 multiplayer: Some(&mut *self.multiplayer),
@@ -1386,6 +1688,7 @@ impl GameInstance {
                     assets: &mut self.assets,
                     audio: &mut self.audio,
                     globals: &mut self.globals,
+                    scripting: Some(&mut self.scripting),
                     jobs: Some(&self.jobs),
                     network: &mut self.network,
                     multiplayer: Some(&mut *self.multiplayer),
@@ -1412,6 +1715,7 @@ impl GameInstance {
                 assets: &mut self.assets,
                 audio: &mut self.audio,
                 globals: &mut self.globals,
+                scripting: Some(&mut self.scripting),
                 jobs: Some(&self.jobs),
                 network: &mut self.network,
                 multiplayer: Some(&mut *self.multiplayer),
@@ -1461,6 +1765,7 @@ impl GameInstance {
                 assets: &mut self.assets,
                 audio: &mut self.audio,
                 globals: &mut self.globals,
+                scripting: Some(&mut self.scripting),
                 jobs: None,
                 network: &mut self.network,
                 multiplayer: Some(&mut *self.multiplayer),
@@ -1523,7 +1828,8 @@ impl GameInstance {
 }
 
 impl AppState<Vertex> for GameInstance {
-    fn on_init(&mut self, _graphics: &mut Graphics<Vertex>, _: &mut AppControl) {
+    fn on_init(&mut self, _graphics: &mut Graphics<Vertex>, control: &mut AppControl) {
+        self.globals.app.fullscreen = control.fullscreen();
         #[cfg(feature = "editor")]
         {
             let temp = Gc::new(());
@@ -1538,6 +1844,7 @@ impl AppState<Vertex> for GameInstance {
                 assets: &mut self.assets,
                 audio: &mut self.audio,
                 globals: &mut self.globals,
+                scripting: Some(&mut self.scripting),
                 jobs: Some(&self.jobs),
                 network: &mut self.network,
                 multiplayer: Some(&mut *self.multiplayer),
@@ -1555,11 +1862,124 @@ impl AppState<Vertex> for GameInstance {
         }
     }
 
-    fn on_redraw(&mut self, graphics: &mut Graphics<Vertex>, _: &mut AppControl) {
+    fn on_redraw(&mut self, graphics: &mut Graphics<Vertex>, control: &mut AppControl) {
+        self.globals.app.fullscreen = control.fullscreen();
         self.process_frame(graphics);
+        if self.globals.app.is_close_requested() {
+            control.close_requested = true;
+        }
+        if let Some(fullscreen) = self.globals.app.fullscreen_request.take() {
+            control.set_fullscreen(fullscreen);
+        }
     }
 
     fn on_event(&mut self, event: Event<()>, _: &mut Window) -> bool {
         self.process_event(&event)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::GameTimeControl;
+
+    const STEP: f32 = 1.0 / 60.0;
+
+    #[test]
+    fn test_time_control_runs_whole_steps_and_carries_the_remainder() {
+        let mut time = GameTimeControl::default();
+
+        time.advance(STEP * 2.5, 1.0);
+        assert_eq!(time.take_steps(STEP, 8), 2);
+        assert!((time.accumulator - STEP * 0.5).abs() < 1.0e-6);
+
+        time.advance(STEP * 0.6, 1.0);
+        assert_eq!(time.take_steps(STEP, 8), 1);
+        assert!((time.accumulator - STEP * 0.1).abs() < 1.0e-6);
+    }
+
+    #[test]
+    fn test_time_control_carries_a_partial_step_between_frames() {
+        let mut time = GameTimeControl::default();
+
+        time.advance(STEP * 0.5, 1.0);
+        assert_eq!(time.take_steps(STEP, 8), 0);
+
+        time.advance(STEP * 0.5, 1.0);
+        assert_eq!(time.take_steps(STEP, 8), 1);
+    }
+
+    #[test]
+    fn test_time_control_pause_stops_accumulation_and_freezes_total_time() {
+        let mut time = GameTimeControl::default();
+
+        time.pause();
+        assert_eq!(time.advance(STEP * 10.0, 1.0), 0.0);
+        assert_eq!(time.take_steps(STEP, 8), 0);
+        assert_eq!(time.total_time(), 0.0);
+
+        time.resume();
+        time.advance(STEP, 1.0);
+        assert_eq!(time.take_steps(STEP, 8), 1);
+        assert!((time.total_time() - STEP).abs() < 1.0e-6);
+    }
+
+    #[test]
+    fn test_time_control_requested_steps_run_while_paused_and_advance_total_time() {
+        let mut time = GameTimeControl::default();
+
+        time.pause();
+        time.request_steps(3);
+        assert_eq!(time.pending_steps(), 3);
+        assert_eq!(time.take_steps(STEP, 8), 3);
+        assert_eq!(time.pending_steps(), 0);
+        assert!((time.total_time() - STEP * 3.0).abs() < 1.0e-6);
+
+        assert_eq!(time.take_steps(STEP, 8), 0);
+    }
+
+    #[test]
+    fn test_time_control_requested_steps_over_the_cap_carry_to_later_frames() {
+        let mut time = GameTimeControl::default();
+
+        time.pause();
+        time.request_steps(5);
+        assert_eq!(time.take_steps(STEP, 2), 2);
+        assert_eq!(time.take_steps(STEP, 2), 2);
+        assert_eq!(time.take_steps(STEP, 2), 1);
+        assert_eq!(time.take_steps(STEP, 2), 0);
+    }
+
+    #[test]
+    fn test_time_control_drops_the_backlog_past_the_cap_instead_of_spiralling() {
+        let mut time = GameTimeControl::default();
+
+        time.advance(STEP * 100.0, 1.0);
+        assert_eq!(time.take_steps(STEP, 8), 8);
+        assert_eq!(time.dropped_steps(), 92);
+        assert!(time.accumulator < STEP);
+        assert_eq!(time.take_steps(STEP, 8), 0);
+    }
+
+    #[test]
+    fn test_time_control_time_scale_and_unfocused_divisor_scale_accumulation() {
+        let mut time = GameTimeControl::default();
+
+        time.set_time_scale(2.0);
+        assert_eq!(time.advance(STEP, 1.0), STEP * 2.0);
+        assert_eq!(time.take_steps(STEP, 8), 2);
+
+        time.set_time_scale(1.0);
+        assert_eq!(time.advance(STEP * 4.0, 4.0), STEP);
+        assert_eq!(time.take_steps(STEP, 8), 1);
+    }
+
+    #[test]
+    fn test_time_control_rejects_a_negative_time_scale() {
+        let mut time = GameTimeControl::default();
+
+        time.set_time_scale(-1.0);
+        assert_eq!(time.time_scale(), 0.0);
+        assert_eq!(time.advance(STEP, 1.0), 0.0);
+        assert_eq!(time.take_steps(STEP, 8), 0);
     }
 }

@@ -2009,6 +2009,7 @@ impl Drawable for GltfSceneRenderables {
         let matrix = context.top_transform();
         for renderable in &self.renderables {
             let batch = GraphicsBatch {
+                mesh: None,
                 shader: context.shader(renderable.shader.as_ref()),
                 uniforms: std::iter::once((
                     "u_projection_view".into(),
@@ -2048,6 +2049,7 @@ impl Drawable for GltfSceneRenderables {
         }
         if !self.bones_triangles.is_empty() {
             let batch = GraphicsBatch {
+                mesh: None,
                 shader: context.shader(self.bones_shader.as_ref()),
                 uniforms: std::iter::once((
                     "u_projection_view".into(),

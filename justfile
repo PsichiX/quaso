@@ -10,7 +10,7 @@ build:
     cargo build --examples
 
 build-wasm:
-    RUSTFLAGS='--cfg getrandom_backend="wasm_js"' cargo build --target wasm32-unknown-unknown
+    RUSTFLAGS='--cfg getrandom_backend="wasm_js" --cfg web_sys_unstable_apis' cargo build -p quaso --target wasm32-unknown-unknown
 
 run NAME="top-down" PLATFORM="desktop":
     cd ./templates/{{NAME}} && just run {{PLATFORM}}
@@ -59,10 +59,10 @@ update:
     cargo update --aggressive
 
 example NAME="hello_world":
-    cargo run --all-features --example {{NAME}}
+    cargo run -p quaso --all-features --example {{NAME}}
 
 publish:
-    cargo publish --no-verify
+    cargo publish -p quaso --no-verify
 
 package-template NAME:
     rm -rf ./templates/{{NAME}}/dist/

@@ -11,7 +11,7 @@ build platform="desktop":
     just build-{{platform}}
 
 build-web:
-    RUSTFLAGS='--cfg getrandom_backend="wasm_js"' wasm-pack build --target web --release
+    RUSTFLAGS='--cfg getrandom_backend="wasm_js" --cfg web_sys_unstable_apis' wasm-pack build --target web --release
 
 build-desktop:
     cargo build --release
@@ -71,7 +71,7 @@ package-web:
     rm -rf ./dist/web/
     mkdir -p ./dist/web/pkg/
     cp -f ./index.html ./dist/web/
-    cp -f ./pkg/game_web.js ./dist/web/pkg/
-    cp -f ./pkg/game_web_bg.wasm ./dist/web/pkg/
+    cp -f ./pkg/fresh_start_web.js ./dist/web/pkg/
+    cp -f ./pkg/fresh_start_web_bg.wasm ./dist/web/pkg/
     powershell Compress-Archive -Force "./dist/web/*" ./dist/%{ $PROJECT_NAME }%-web.zip
 ```

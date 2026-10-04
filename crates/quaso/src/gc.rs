@@ -27,6 +27,22 @@ impl<T> Gc<T> {
         Self(ManagedGc::new(value))
     }
 
+    /// # Safety
+    ///
+    /// The handle carries no lifetime. Drop the handle before `value`, and do
+    /// not touch `value` by another path while the handle lives.
+    pub unsafe fn borrowed(value: &mut T) -> Self {
+        Self(unsafe { ManagedGc::borrowed(value) })
+    }
+
+    /// # Safety
+    ///
+    /// The handle given to `f` points at memory that is not written yet. `f`
+    /// can store the handle, but must not read or write through the handle.
+    pub unsafe fn new_cyclic(f: impl FnOnce(Self) -> T) -> Self {
+        Self(unsafe { ManagedGc::new_cyclic(|gc| f(Self(gc))) })
+    }
+
     pub fn heartbeat(&self) -> Heartbeat {
         Heartbeat(match self.0.lifetime() {
             ManagedGcLifetime::Owned(lifetime) => lifetime.state().downgrade().clone(),
@@ -103,6 +119,22 @@ impl DynGc {
         Self(DynamicManagedGc::new(value))
     }
 
+    /// # Safety
+    ///
+    /// The handle carries no lifetime. Drop the handle before `value`, and do
+    /// not touch `value` by another path while the handle lives.
+    pub unsafe fn borrowed<T>(value: &mut T) -> Self {
+        Self(unsafe { DynamicManagedGc::borrowed(value) })
+    }
+
+    /// # Safety
+    ///
+    /// The handle given to `f` points at memory that is not written yet. `f`
+    /// can store the handle, but must not read or write through the handle.
+    pub unsafe fn new_cyclic<T>(f: impl FnOnce(Self) -> T) -> Self {
+        Self(unsafe { DynamicManagedGc::new_cyclic(|gc| f(Self(gc))) })
+    }
+
     pub fn heartbeat(&self) -> Heartbeat {
         Heartbeat(match self.0.lifetime() {
             ManagedGcLifetime::Owned(lifetime) => lifetime.state().downgrade().clone(),
@@ -135,6 +167,16 @@ impl DynGc {
 
     pub fn into_typed<T>(self) -> Gc<T> {
         Gc(self.0.into_typed())
+    }
+
+    pub fn ptr_eq(this: &Self, other: &Self) -> bool {
+        unsafe {
+            this.0.exists() && other.0.exists() && this.0.as_ptr_raw() == other.0.as_ptr_raw()
+        }
+    }
+
+    pub fn transfer_ownership(from: &mut Self, to: &mut Self) -> bool {
+        from.0.transfer_ownership(&mut to.0)
     }
 }
 

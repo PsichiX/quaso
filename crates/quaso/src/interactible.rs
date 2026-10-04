@@ -107,6 +107,7 @@ impl Interactible {
         time: f32,
     ) {
         let batch = GraphicsBatch {
+            mesh: None,
             shader: context.shader(Some(shader)),
             uniforms: [
                 (

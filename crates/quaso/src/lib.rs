@@ -12,6 +12,7 @@ pub mod third_party {
     #[cfg(not(target_arch = "wasm32"))]
     pub use glutin as windowing;
     pub use image;
+    pub use intuicio_backend_vm;
     pub use intuicio_core;
     pub use intuicio_data;
     pub use intuicio_derive;
@@ -30,8 +31,10 @@ pub mod third_party {
     pub use raui_material;
     pub use rstar;
     pub use rusty_spine;
+    pub use schemars;
     pub use send_wrapper;
     pub use serde;
+    pub use serde_json;
     pub use spitfire_core;
     pub use spitfire_draw;
     pub use spitfire_fontdue;
@@ -62,10 +65,16 @@ pub mod third_party {
     }
 }
 
+// The agent server opens a control port, so it is desktop only and it is never
+// on by default.
+#[cfg(all(feature = "agent", not(target_arch = "wasm32")))]
+pub mod agent;
 pub mod animation;
 pub mod assets;
 pub mod audio;
+pub mod capture;
 pub mod character;
+pub mod commands;
 pub mod config;
 pub mod context;
 pub mod coroutine;
@@ -74,12 +83,14 @@ pub mod editor;
 pub mod game;
 pub mod gamepad;
 pub mod gc;
+pub mod input;
 pub mod interactible;
 pub mod map;
 pub mod multiplayer;
 pub mod scripting;
 pub mod tag;
 pub mod transformed;
+pub mod ui;
 
 use config::Config;
 use game::GameInstance;

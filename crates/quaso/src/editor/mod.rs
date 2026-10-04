@@ -2,6 +2,7 @@ pub mod features;
 pub mod ui;
 
 use crate::{
+    capture::GAME_CAPTURE_TARGET,
     context::GameContext,
     editor::features::viewport::{EditorGameViewport, editor_viewport_game_world_and_ui},
     game::GameGlobals,
@@ -26,14 +27,13 @@ use raui_material::theme::{ThemeProps, ThemedTextMaterial, new_dark_theme};
 use spitfire_draw::{canvas::Canvas, context::DrawContext, utils::Vertex};
 use spitfire_glow::{graphics::Graphics, renderer::GlowTextureFormat};
 use spitfire_gui::context::GuiContext;
-use spitfire_input::{InputContext, InputMapping, InputMappingRef, MouseButton, VirtualKeyCode};
+use spitfire_input::{InputContext, InputMappingRef, MouseButton, VirtualKeyCode};
 use std::{
     any::{Any, TypeId},
     borrow::Cow,
     collections::HashMap,
     sync::mpsc::{Receiver, Sender},
 };
-use typid::ID;
 
 const ROBOTO_FONT_DATA: &[u8] = include_bytes!("./roboto.ttf");
 pub const EDITOR_FONT_NAME: &str = "~~editor-roboto-font~~";
@@ -103,6 +103,12 @@ impl Editor {
         draw: &mut DrawContext,
     ) {
         if let Some(canvas) = &self.game_canvas {
+            if graphics.is_capture_requested(GAME_CAPTURE_TARGET) {
+                draw.end_frame();
+                let _ = graphics.draw();
+                graphics.resolve_capture(GAME_CAPTURE_TARGET);
+                draw.begin_frame(graphics);
+            }
             Canvas::deactivate(draw, graphics);
             draw.textures.insert(
                 EditorGameViewport::ID.into(),
@@ -477,7 +483,7 @@ pub struct EditorInput {
     pub(crate) pointer_position: Vec2,
     pub(crate) modifiers: ModifiersState,
     pub(crate) context: InputContext,
-    table: HashMap<Cow<'static, str>, ID<InputMapping>>,
+    table: HashMap<Cow<'static, str>, InputMappingRef>,
     sender: Sender<EditorInputCommand>,
     receiver: Receiver<EditorInputCommand>,
 }
@@ -511,7 +517,7 @@ impl EditorInput {
                 }
                 EditorInputCommand::RemoveMapping { name } => {
                     if let Some(id) = self.table.remove(&name) {
-                        self.context.remove_mapping(id);
+                        self.context.remove_mapping(&id);
                     }
                 }
             }

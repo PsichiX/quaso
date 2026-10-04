@@ -784,6 +784,7 @@ impl Drawable for MapRenderer<'_> {
                     continue;
                 }
                 let batch = GraphicsBatch {
+                    mesh: None,
                     shader: context.shader(layer.shader.as_ref()),
                     uniforms: layer
                         .uniforms
@@ -868,6 +869,7 @@ impl Drawable for MapRenderer<'_> {
             for (mask, shader, color, blending) in &self.show_colliders {
                 let color = color.into_array();
                 let batch = GraphicsBatch {
+                    mesh: None,
                     shader: context.shader(Some(shader)),
                     uniforms: std::iter::once((
                         "u_projection_view".into(),

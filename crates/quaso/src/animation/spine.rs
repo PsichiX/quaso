@@ -362,6 +362,7 @@ impl SpineSkeleton {
         let matrix = context.top_transform();
         for renderable in renderables {
             let batch = GraphicsBatch {
+                mesh: None,
                 shader: context.shader(self.shader.as_ref()),
                 uniforms: self
                     .uniforms

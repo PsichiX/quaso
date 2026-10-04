@@ -3,6 +3,7 @@ use crate::{
     game::{GameGlobals, GameJobs, GameStateChange, GameSubsystem},
     gc::Heartbeat,
     multiplayer::{GameConnection, GameMultiplayer, GameMultiplayerChange, GameNetwork},
+    scripting::Scripting,
 };
 use keket::database::AssetDatabase;
 use moirai::queue::JobQueue;
@@ -22,6 +23,7 @@ pub struct GameContext<'a> {
     pub assets: &'a mut AssetDatabase,
     pub audio: &'a mut Audio,
     pub globals: &'a mut GameGlobals,
+    pub scripting: Option<&'a mut Scripting>,
     pub jobs: Option<&'a GameJobs>,
     pub network: &'a mut GameNetwork,
     pub multiplayer: Option<&'a mut dyn GameMultiplayer>,
@@ -64,6 +66,16 @@ impl<'a> GameContext<'a> {
         self.multiplayer.as_mut()?.as_any_mut().downcast_mut::<T>()
     }
 
+    pub fn with_scripting<R>(
+        &mut self,
+        f: impl FnOnce(&mut Scripting, &mut GameContext) -> R,
+    ) -> Option<R> {
+        let scripting = self.scripting.take()?;
+        let result = f(&mut *scripting, self);
+        self.scripting = Some(scripting);
+        Some(result)
+    }
+
     /// Forks the context, returning a new GameContext with the caller's lifetime.
     ///
     /// # Safety
@@ -86,6 +98,10 @@ impl<'a> GameContext<'a> {
             assets: self.assets,
             audio: self.audio,
             globals: self.globals,
+            scripting: match &mut self.scripting {
+                Some(scripting) => Some(&mut **scripting),
+                None => None,
+            },
             jobs: self.jobs,
             network: self.network,
             multiplayer: match &mut self.multiplayer {
