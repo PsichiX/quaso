@@ -7,7 +7,7 @@ multiplayer behind one game loop, so a small game needs little wiring.
 
 ```toml
 [dependencies]
-quaso = "0.59"
+quaso = "0.60"
 ```
 
 ## Features
