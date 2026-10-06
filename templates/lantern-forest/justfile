@@ -1,0 +1,74 @@
+# List the just recipe list
+list:
+    just --list
+
+format:
+    cargo fmt
+
+build platform="desktop":
+    just build-{{platform}}
+
+build-web:
+    RUSTFLAGS='--cfg getrandom_backend="wasm_js" --cfg web_sys_unstable_apis' wasm-pack build --target web --release
+
+build-desktop:
+    cargo build --release
+
+editor:
+    cargo run --release --features editor
+
+run platform="desktop":
+    just run-{{platform}}
+
+run-desktop:
+    cargo run --release
+
+run-web:
+    just build web
+    simple-http-server --ip 127.0.0.1 --port 8080 ./
+
+clippy:
+    cargo clippy
+
+test:
+    cargo test
+
+checks:
+    just format
+    just build desktop
+    just build web
+    just clippy
+    just test
+
+clean:
+    find . -name target -type d -exec rm -r {} +
+    just remove-lockfiles
+
+remove-lockfiles:
+    find . -name Cargo.lock -type f -exec rm {} +
+
+list-outdated:
+    cargo outdated -R -w
+
+update:
+    cargo update --aggressive
+
+package:
+    just package-windows
+    just package-web
+
+package-windows:
+    just build desktop
+    rm -rf ./dist/windows/
+    mkdir -p ./dist/windows/
+    cp -f ../../target/release/lantern-forest.exe ./dist/windows/
+    powershell Compress-Archive -Force "./dist/windows/*" ./dist/lantern-forest-windows.zip
+
+package-web:
+    just build web
+    rm -rf ./dist/web/
+    mkdir -p ./dist/web/pkg/
+    cp -f ./index.html ./dist/web/
+    cp -f ./pkg/lantern_forest_web.js ./dist/web/pkg/
+    cp -f ./pkg/lantern_forest_web_bg.wasm ./dist/web/pkg/
+    powershell Compress-Archive -Force "./dist/web/*" ./dist/lantern-forest-web.zip

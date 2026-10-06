@@ -7,8 +7,8 @@ use quaso::{
     gc::Gc,
     third_party::{
         spitfire_glow::graphics::{CameraScaling, Shader},
+        spitfire_input::KeyCode,
         spitfire_input::{InputActionRef, InputConsume, InputMapping, VirtualAction},
-        windowing::event::VirtualKeyCode,
     },
 };
 
@@ -83,13 +83,10 @@ impl GameState for Gameplay {
             InputMapping::default()
                 .consume(InputConsume::Hit)
                 .action(
-                    VirtualAction::KeyButton(VirtualKeyCode::Space),
+                    VirtualAction::KeyButton(KeyCode::Space),
                     self.action.clone(),
                 )
-                .action(
-                    VirtualAction::KeyButton(VirtualKeyCode::Escape),
-                    self.exit.clone(),
-                ),
+                .action(VirtualAction::KeyButton(KeyCode::Escape), self.exit.clone()),
         );
     }
 

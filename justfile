@@ -44,6 +44,7 @@ checks:
     cd ./templates/fresh-start && just checks
     cd ./templates/slot-machine && just checks
     cd ./templates/top-down && just checks
+    cd ./templates/lantern-forest && just checks
 
 clean:
     find . -name target -type d -exec rm -r {} +
@@ -74,3 +75,4 @@ package-templates:
     just package-template "fresh-start"
     just package-template "slot-machine"
     just package-template "top-down"
+    just package-template "lantern-forest"

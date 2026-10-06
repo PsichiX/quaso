@@ -36,9 +36,9 @@ use quaso::{
             graphics::{CameraScaling, Shader},
             renderer::GlowTextureFiltering,
         },
+        spitfire_input::KeyCode,
         spitfire_input::{InputActionRef, InputConsume, InputMapping, VirtualAction},
         vek::Vec2,
-        windowing::event::VirtualKeyCode,
     },
 };
 use std::{collections::HashMap, error::Error};
@@ -122,14 +122,11 @@ impl GameState for State {
         context.input.push_mapping(
             InputMapping::default()
                 .consume(InputConsume::Hit)
-                .action(VirtualAction::KeyButton(VirtualKeyCode::A), left.clone())
-                .action(VirtualAction::KeyButton(VirtualKeyCode::D), right.clone())
-                .action(VirtualAction::KeyButton(VirtualKeyCode::W), up.clone())
-                .action(VirtualAction::KeyButton(VirtualKeyCode::S), down.clone())
-                .action(
-                    VirtualAction::KeyButton(VirtualKeyCode::Escape),
-                    self.exit.clone(),
-                ),
+                .action(VirtualAction::KeyButton(KeyCode::KeyA), left.clone())
+                .action(VirtualAction::KeyButton(KeyCode::KeyD), right.clone())
+                .action(VirtualAction::KeyButton(KeyCode::KeyW), up.clone())
+                .action(VirtualAction::KeyButton(KeyCode::KeyS), down.clone())
+                .action(VirtualAction::KeyButton(KeyCode::Escape), self.exit.clone()),
         );
         context.globals.set(ScriptInputs(HashMap::from([
             ("left".to_owned(), left),

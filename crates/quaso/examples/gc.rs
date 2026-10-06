@@ -12,8 +12,8 @@ use quaso::{
         },
         spitfire_glow::graphics::{CameraScaling, Shader},
         spitfire_input::{
-            CardinalInputCombinator, InputActionRef, InputConsume, InputMapping, VirtualAction,
-            VirtualKeyCode,
+            CardinalInputCombinator, InputActionRef, InputConsume, InputMapping, KeyCode,
+            VirtualAction,
         },
         vek::{Rgba, Vec2},
     },
@@ -105,51 +105,36 @@ impl GameState for State {
         context.input.push_mapping(
             InputMapping::default()
                 .consume(InputConsume::Hit)
+                .action(VirtualAction::KeyButton(KeyCode::KeyA), move_left.clone())
+                .action(VirtualAction::KeyButton(KeyCode::KeyD), move_right.clone())
+                .action(VirtualAction::KeyButton(KeyCode::KeyW), move_up.clone())
+                .action(VirtualAction::KeyButton(KeyCode::KeyS), move_down.clone())
                 .action(
-                    VirtualAction::KeyButton(VirtualKeyCode::A),
+                    VirtualAction::KeyButton(KeyCode::ArrowLeft),
                     move_left.clone(),
                 )
                 .action(
-                    VirtualAction::KeyButton(VirtualKeyCode::D),
+                    VirtualAction::KeyButton(KeyCode::ArrowRight),
                     move_right.clone(),
                 )
-                .action(VirtualAction::KeyButton(VirtualKeyCode::W), move_up.clone())
+                .action(VirtualAction::KeyButton(KeyCode::ArrowUp), move_up.clone())
                 .action(
-                    VirtualAction::KeyButton(VirtualKeyCode::S),
+                    VirtualAction::KeyButton(KeyCode::ArrowDown),
                     move_down.clone(),
                 )
                 .action(
-                    VirtualAction::KeyButton(VirtualKeyCode::Left),
-                    move_left.clone(),
-                )
-                .action(
-                    VirtualAction::KeyButton(VirtualKeyCode::Right),
-                    move_right.clone(),
-                )
-                .action(
-                    VirtualAction::KeyButton(VirtualKeyCode::Up),
-                    move_up.clone(),
-                )
-                .action(
-                    VirtualAction::KeyButton(VirtualKeyCode::Down),
-                    move_down.clone(),
-                )
-                .action(
-                    VirtualAction::KeyButton(VirtualKeyCode::Space),
+                    VirtualAction::KeyButton(KeyCode::Space),
                     self.switch.clone(),
                 )
                 .action(
-                    VirtualAction::KeyButton(VirtualKeyCode::Insert),
+                    VirtualAction::KeyButton(KeyCode::Insert),
                     self.spawn.clone(),
                 )
                 .action(
-                    VirtualAction::KeyButton(VirtualKeyCode::Delete),
+                    VirtualAction::KeyButton(KeyCode::Delete),
                     self.destroy.clone(),
                 )
-                .action(
-                    VirtualAction::KeyButton(VirtualKeyCode::Escape),
-                    self.exit.clone(),
-                ),
+                .action(VirtualAction::KeyButton(KeyCode::Escape), self.exit.clone()),
         );
 
         // Create the player controller pointer owned by the state.

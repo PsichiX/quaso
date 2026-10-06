@@ -21,12 +21,12 @@ debug_automatic_glGetError = [
 editor = []
 
 [dependencies]
-spitfire-core = "0.37"
-spitfire-glow = "0.37"
-spitfire-fontdue = "0.37"
-spitfire-draw = "0.37"
-spitfire-input = "0.37"
-spitfire-gui = "0.37"
+spitfire-core = "0.38"
+spitfire-glow = "0.38"
+spitfire-fontdue = "0.38"
+spitfire-draw = "0.38"
+spitfire-input = "0.38"
+spitfire-gui = "0.38"
 raui-core = "0.70"
 raui-material = "0.70"
 raui-immediate = "0.70"
@@ -78,9 +78,9 @@ base64 = "0.22"
 flume = "0.12"
 paste = "1"
 schemars = "1.2.2"
+winit = { version = "0.30", features = ["serde"] }
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
-winit = { version = "0.28", features = ["serde"] }
 instant = { version = "0.1", features = ["wasm-bindgen"] }
 getrandom = { version = "0.4", features = ["wasm_js"] }
 wasm-bindgen = "0.2"
@@ -89,5 +89,4 @@ js-sys = "0.3"
 tracing-web = "0.1"
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
-glutin = { version = "0.28", features = ["serde"] }
 getrandom = { version = "0.4" }

@@ -9,8 +9,6 @@ pub mod third_party {
     pub use fontdue;
     pub use getrandom;
     pub use gilrs;
-    #[cfg(not(target_arch = "wasm32"))]
-    pub use glutin as windowing;
     pub use image;
     pub use intuicio_backend_vm;
     pub use intuicio_core;
@@ -53,7 +51,6 @@ pub mod third_party {
     pub use tracing_web;
     pub use typid;
     pub use vek;
-    #[cfg(target_arch = "wasm32")]
     pub use winit as windowing;
     pub use zip;
 
@@ -85,6 +82,7 @@ pub mod gamepad;
 pub mod gc;
 pub mod input;
 pub mod interactible;
+pub mod lighting;
 pub mod map;
 pub mod multiplayer;
 pub mod scripting;
@@ -139,6 +137,12 @@ impl GameLauncher {
     pub fn run(self) {
         #[cfg(debug_assertions)]
         spitfire_glow::console_log!("* Game {:#?}", self.config);
+        #[cfg(not(target_arch = "wasm32"))]
+        if self.config.is_headless() {
+            spitfire_glow::app::HeadlessApp::<Vertex>::new(self.config.to_app_config(self.title))
+                .run(self.instance);
+            return;
+        }
         App::<Vertex>::new(self.config.to_app_config(self.title)).run(self.instance);
     }
 }

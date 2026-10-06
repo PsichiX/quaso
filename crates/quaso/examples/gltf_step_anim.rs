@@ -20,9 +20,7 @@ use quaso::{
             graphics::{CameraScaling, Shader},
             renderer::GlowBlending,
         },
-        spitfire_input::{
-            InputActionRef, InputConsume, InputMapping, VirtualAction, VirtualKeyCode,
-        },
+        spitfire_input::{InputActionRef, InputConsume, InputMapping, KeyCode, VirtualAction},
         vek::{Aabr, Mat4, Vec2, Vec3},
     },
 };
@@ -221,30 +219,12 @@ impl GameState for State {
         context.input.push_mapping(
             InputMapping::default()
                 .consume(InputConsume::Hit)
-                .action(
-                    VirtualAction::KeyButton(VirtualKeyCode::Key1),
-                    self.idle.clone(),
-                )
-                .action(
-                    VirtualAction::KeyButton(VirtualKeyCode::Key2),
-                    self.walk.clone(),
-                )
-                .action(
-                    VirtualAction::KeyButton(VirtualKeyCode::Key3),
-                    self.run.clone(),
-                )
-                .action(
-                    VirtualAction::KeyButton(VirtualKeyCode::W),
-                    self.toggle.clone(),
-                )
-                .action(
-                    VirtualAction::KeyButton(VirtualKeyCode::Q),
-                    self.prev.clone(),
-                )
-                .action(
-                    VirtualAction::KeyButton(VirtualKeyCode::E),
-                    self.next.clone(),
-                ),
+                .action(VirtualAction::KeyButton(KeyCode::Digit1), self.idle.clone())
+                .action(VirtualAction::KeyButton(KeyCode::Digit2), self.walk.clone())
+                .action(VirtualAction::KeyButton(KeyCode::Digit3), self.run.clone())
+                .action(VirtualAction::KeyButton(KeyCode::KeyW), self.toggle.clone())
+                .action(VirtualAction::KeyButton(KeyCode::KeyQ), self.prev.clone())
+                .action(VirtualAction::KeyButton(KeyCode::KeyE), self.next.clone()),
         );
     }
 

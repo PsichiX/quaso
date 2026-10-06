@@ -40,6 +40,7 @@ use quaso::{
             graphics::{CameraScaling, GraphicsTarget, Shader},
             renderer::GlowTextureFiltering,
         },
+        spitfire_input::KeyCode,
         spitfire_input::{
             ArrayInputCombinator, CardinalInputCombinator, InputActionRef, InputAxisRef,
             InputConsume, InputMapping, MouseButton, VirtualAction, VirtualAxis,
@@ -65,7 +66,6 @@ use quaso::{
             Layer, fmt::layer, layer::SubscriberExt, registry, util::SubscriberInitExt,
         },
         vek::{Rgba, Vec2},
-        windowing::event::VirtualKeyCode,
     },
 };
 use std::{collections::HashMap, error::Error, sync::Arc};
@@ -180,10 +180,7 @@ impl GameState for Lobby {
                     VirtualAction::MouseButton(MouseButton::Left),
                     pointer_trigger,
                 )
-                .action(
-                    VirtualAction::KeyButton(VirtualKeyCode::Escape),
-                    self.exit.clone(),
-                ),
+                .action(VirtualAction::KeyButton(KeyCode::Escape), self.exit.clone()),
         );
     }
 
@@ -310,27 +307,15 @@ impl GameState for State {
         context.input.push_mapping(
             InputMapping::default()
                 .consume(InputConsume::Hit)
-                .action(
-                    VirtualAction::KeyButton(VirtualKeyCode::A),
-                    move_left.clone(),
-                )
-                .action(
-                    VirtualAction::KeyButton(VirtualKeyCode::D),
-                    move_right.clone(),
-                )
-                .action(VirtualAction::KeyButton(VirtualKeyCode::W), move_up.clone())
-                .action(
-                    VirtualAction::KeyButton(VirtualKeyCode::S),
-                    move_down.clone(),
-                )
-                .action(VirtualAction::KeyButton(VirtualKeyCode::Left), move_left)
-                .action(VirtualAction::KeyButton(VirtualKeyCode::Right), move_right)
-                .action(VirtualAction::KeyButton(VirtualKeyCode::Up), move_up)
-                .action(VirtualAction::KeyButton(VirtualKeyCode::Down), move_down)
-                .action(
-                    VirtualAction::KeyButton(VirtualKeyCode::Escape),
-                    self.exit.clone(),
-                ),
+                .action(VirtualAction::KeyButton(KeyCode::KeyA), move_left.clone())
+                .action(VirtualAction::KeyButton(KeyCode::KeyD), move_right.clone())
+                .action(VirtualAction::KeyButton(KeyCode::KeyW), move_up.clone())
+                .action(VirtualAction::KeyButton(KeyCode::KeyS), move_down.clone())
+                .action(VirtualAction::KeyButton(KeyCode::ArrowLeft), move_left)
+                .action(VirtualAction::KeyButton(KeyCode::ArrowRight), move_right)
+                .action(VirtualAction::KeyButton(KeyCode::ArrowUp), move_up)
+                .action(VirtualAction::KeyButton(KeyCode::ArrowDown), move_down)
+                .action(VirtualAction::KeyButton(KeyCode::Escape), self.exit.clone()),
         );
 
         if let Some(multiplayer) = context.multiplayer_mut::<ClientServerMultiplayer>() {

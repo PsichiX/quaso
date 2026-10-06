@@ -20,8 +20,8 @@ use quaso::{
             renderer::GlowBlending,
         },
         spitfire_input::{
-            CardinalInputCombinator, InputActionRef, InputConsume, InputMapping, VirtualAction,
-            VirtualKeyCode,
+            CardinalInputCombinator, InputActionRef, InputConsume, InputMapping, KeyCode,
+            VirtualAction,
         },
         vek::{Aabr, Mat4, Vec2, Vec3},
     },
@@ -305,12 +305,12 @@ impl GameState for State {
         context.input.push_mapping(
             InputMapping::default()
                 .consume(InputConsume::Hit)
-                .action(VirtualAction::KeyButton(VirtualKeyCode::W), up)
-                .action(VirtualAction::KeyButton(VirtualKeyCode::S), down)
-                .action(VirtualAction::KeyButton(VirtualKeyCode::A), left)
-                .action(VirtualAction::KeyButton(VirtualKeyCode::D), right)
+                .action(VirtualAction::KeyButton(KeyCode::KeyW), up)
+                .action(VirtualAction::KeyButton(KeyCode::KeyS), down)
+                .action(VirtualAction::KeyButton(KeyCode::KeyA), left)
+                .action(VirtualAction::KeyButton(KeyCode::KeyD), right)
                 .action(
-                    VirtualAction::KeyButton(VirtualKeyCode::LShift),
+                    VirtualAction::KeyButton(KeyCode::ShiftLeft),
                     self.sprint.clone(),
                 ),
         );

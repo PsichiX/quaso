@@ -6,8 +6,9 @@ use crate::{
     context::GameContext,
     editor::features::viewport::{EditorGameViewport, editor_viewport_game_world_and_ui},
     game::GameGlobals,
-    third_party::windowing::event::{
-        ElementState, Event, ModifiersState, MouseScrollDelta, WindowEvent,
+    third_party::windowing::{
+        event::{ElementState, Event, MouseScrollDelta, WindowEvent},
+        keyboard::{ModifiersState, PhysicalKey},
     },
 };
 use fontdue::Font;
@@ -27,7 +28,7 @@ use raui_material::theme::{ThemeProps, ThemedTextMaterial, new_dark_theme};
 use spitfire_draw::{canvas::Canvas, context::DrawContext, utils::Vertex};
 use spitfire_glow::{graphics::Graphics, renderer::GlowTextureFormat};
 use spitfire_gui::context::GuiContext;
-use spitfire_input::{InputContext, InputMappingRef, MouseButton, VirtualKeyCode};
+use spitfire_input::{InputContext, InputMappingRef, KeyCode, MouseButton};
 use std::{
     any::{Any, TypeId},
     borrow::Cow,
@@ -44,7 +45,7 @@ pub struct Editor {
     game_widgets: Vec<WidgetNode>,
     #[allow(clippy::type_complexity)]
     gui_drawer: Box<dyn FnMut(&mut GameContext, &mut EditorSubsystems)>,
-    edit_mode_switch_key: VirtualKeyCode,
+    edit_mode_switch_key: KeyCode,
     show_editor_while_running: bool,
     coords_mapping: CoordsMapping,
 }
@@ -56,7 +57,7 @@ impl Default for Editor {
             game_canvas: None,
             game_widgets: Default::default(),
             gui_drawer: Box::new(editor_viewport_game_world_and_ui),
-            edit_mode_switch_key: VirtualKeyCode::F5,
+            edit_mode_switch_key: KeyCode::F5,
             show_editor_while_running: true,
             coords_mapping: Default::default(),
         }
@@ -182,8 +183,8 @@ impl Editor {
     }
 
     pub fn event(&mut self, event: &WindowEvent, gui: &mut GuiContext, globals: &mut GameGlobals) {
-        if let WindowEvent::KeyboardInput { input, .. } = event
-            && input.virtual_keycode == Some(self.edit_mode_switch_key)
+        if let WindowEvent::KeyboardInput { event: input, .. } = event
+            && input.physical_key == PhysicalKey::Code(self.edit_mode_switch_key)
             && input.state == ElementState::Pressed
         {
             globals.editor.is_editing = !globals.editor.is_editing;
@@ -191,14 +192,7 @@ impl Editor {
 
         match event {
             WindowEvent::ModifiersChanged(modifiers) => {
-                globals.editor.input.modifiers = *modifiers;
-            }
-            WindowEvent::ReceivedCharacter(character) => {
-                gui.interactions
-                    .engine
-                    .interact(Interaction::Navigate(NavSignal::TextChange(
-                        NavTextChange::InsertCharacter(*character),
-                    )));
+                globals.editor.input.modifiers = modifiers.state();
             }
             WindowEvent::CursorMoved { position, .. } => {
                 globals.editor.input.pointer_position = self.coords_mapping.real_to_virtual_vec2(
@@ -261,47 +255,56 @@ impl Editor {
                     _ => {}
                 },
             },
-            WindowEvent::KeyboardInput { input, .. } => {
+            WindowEvent::KeyboardInput { event: input, .. } => {
+                if input.state == ElementState::Pressed
+                    && let Some(text) = input.text.as_ref()
+                {
+                    for character in text.chars().filter(|character| !character.is_control()) {
+                        gui.interactions.engine.interact(Interaction::Navigate(
+                            NavSignal::TextChange(NavTextChange::InsertCharacter(character)),
+                        ));
+                    }
+                }
                 if input.state == ElementState::Pressed {
-                    if let Some(key) = input.virtual_keycode {
+                    if let PhysicalKey::Code(key) = input.physical_key {
                         if gui.interactions.engine.focused_text_input().is_some() {
                             match key {
-                                VirtualKeyCode::Left => {
+                                KeyCode::ArrowLeft => {
                                     gui.interactions.engine.interact(Interaction::Navigate(
                                         NavSignal::TextChange(NavTextChange::MoveCursorLeft),
                                     ))
                                 }
-                                VirtualKeyCode::Right => {
+                                KeyCode::ArrowRight => {
                                     gui.interactions.engine.interact(Interaction::Navigate(
                                         NavSignal::TextChange(NavTextChange::MoveCursorRight),
                                     ))
                                 }
-                                VirtualKeyCode::Home => {
+                                KeyCode::Home => {
                                     gui.interactions.engine.interact(Interaction::Navigate(
                                         NavSignal::TextChange(NavTextChange::MoveCursorStart),
                                     ))
                                 }
-                                VirtualKeyCode::End => {
+                                KeyCode::End => {
                                     gui.interactions.engine.interact(Interaction::Navigate(
                                         NavSignal::TextChange(NavTextChange::MoveCursorEnd),
                                     ))
                                 }
-                                VirtualKeyCode::Back => {
+                                KeyCode::Backspace => {
                                     gui.interactions.engine.interact(Interaction::Navigate(
                                         NavSignal::TextChange(NavTextChange::DeleteLeft),
                                     ))
                                 }
-                                VirtualKeyCode::Delete => {
+                                KeyCode::Delete => {
                                     gui.interactions.engine.interact(Interaction::Navigate(
                                         NavSignal::TextChange(NavTextChange::DeleteRight),
                                     ))
                                 }
-                                VirtualKeyCode::Return | VirtualKeyCode::NumpadEnter => {
+                                KeyCode::Enter | KeyCode::NumpadEnter => {
                                     gui.interactions.engine.interact(Interaction::Navigate(
                                         NavSignal::TextChange(NavTextChange::NewLine),
                                     ))
                                 }
-                                VirtualKeyCode::Escape => {
+                                KeyCode::Escape => {
                                     gui.interactions.engine.interact(Interaction::Navigate(
                                         NavSignal::FocusTextInput(().into()),
                                     ));
@@ -310,16 +313,16 @@ impl Editor {
                             }
                         } else {
                             match key {
-                                VirtualKeyCode::Up => gui
+                                KeyCode::ArrowUp => gui
                                     .interactions
                                     .engine
                                     .interact(Interaction::Navigate(NavSignal::Up)),
-                                VirtualKeyCode::Down => gui
+                                KeyCode::ArrowDown => gui
                                     .interactions
                                     .engine
                                     .interact(Interaction::Navigate(NavSignal::Down)),
-                                VirtualKeyCode::Left => {
-                                    if globals.editor.input.modifiers.shift() {
+                                KeyCode::ArrowLeft => {
+                                    if globals.editor.input.modifiers.shift_key() {
                                         gui.interactions
                                             .engine
                                             .interact(Interaction::Navigate(NavSignal::Prev));
@@ -329,8 +332,8 @@ impl Editor {
                                             .interact(Interaction::Navigate(NavSignal::Left));
                                     }
                                 }
-                                VirtualKeyCode::Right => {
-                                    if globals.editor.input.modifiers.shift() {
+                                KeyCode::ArrowRight => {
+                                    if globals.editor.input.modifiers.shift_key() {
                                         gui.interactions
                                             .engine
                                             .interact(Interaction::Navigate(NavSignal::Next));
@@ -340,14 +343,12 @@ impl Editor {
                                             .interact(Interaction::Navigate(NavSignal::Right));
                                     }
                                 }
-                                VirtualKeyCode::Return
-                                | VirtualKeyCode::NumpadEnter
-                                | VirtualKeyCode::Space => {
+                                KeyCode::Enter | KeyCode::NumpadEnter | KeyCode::Space => {
                                     gui.interactions
                                         .engine
                                         .interact(Interaction::Navigate(NavSignal::Accept(true)));
                                 }
-                                VirtualKeyCode::Escape | VirtualKeyCode::Back => {
+                                KeyCode::Escape | KeyCode::Backspace => {
                                     gui.interactions
                                         .engine
                                         .interact(Interaction::Navigate(NavSignal::Cancel(true)));
@@ -357,18 +358,16 @@ impl Editor {
                         }
                     }
                 } else if input.state == ElementState::Released
-                    && let Some(key) = input.virtual_keycode
+                    && let PhysicalKey::Code(key) = input.physical_key
                     && gui.interactions.engine.focused_text_input().is_none()
                 {
                     match key {
-                        VirtualKeyCode::Return
-                        | VirtualKeyCode::NumpadEnter
-                        | VirtualKeyCode::Space => {
+                        KeyCode::Enter | KeyCode::NumpadEnter | KeyCode::Space => {
                             gui.interactions
                                 .engine
                                 .interact(Interaction::Navigate(NavSignal::Accept(false)));
                         }
-                        VirtualKeyCode::Escape | VirtualKeyCode::Back => {
+                        KeyCode::Escape | KeyCode::Backspace => {
                             gui.interactions
                                 .engine
                                 .interact(Interaction::Navigate(NavSignal::Cancel(false)));

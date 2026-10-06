@@ -435,7 +435,7 @@ mod builtins {
     #[serde(deny_unknown_fields)]
     struct InputPressArgs {
         #[schemars(
-            description = "Action to hold. The form is a kind and a name, such as `key:D`, `key:Escape`, `mouse:Left`, `gamepad_button:South` or `axis:0`. The kinds without a name are `touch`."
+            description = "Action to hold. The form is a kind and a name, such as `key:KeyD`, `key:Escape`, `mouse:Left`, `gamepad_button:South` or `axis:0`. The kinds without a name are `touch`."
         )]
         action: String,
         #[serde(default)]
@@ -459,7 +459,7 @@ mod builtins {
     #[serde(deny_unknown_fields)]
     struct InputReleaseArgs {
         #[schemars(
-            description = "Action to release. It takes the same form as the action of input.press, such as `key:D`."
+            description = "Action to release. It takes the same form as the action of input.press, such as `key:KeyD`."
         )]
         action: String,
         #[serde(default)]
@@ -473,7 +473,7 @@ mod builtins {
     #[serde(deny_unknown_fields)]
     struct InputAxisArgs {
         #[schemars(
-            description = "Axis to write. The form is a kind and a name, such as `key:W`, `mouse:Left`, `gamepad_axis:LeftStickX` or `axis:0`. The kinds without a name are `mouse_position_x`, `mouse_position_y`, `mouse_wheel_x`, `mouse_wheel_y`, `touch_x` and `touch_y`."
+            description = "Axis to write. The form is a kind and a name, such as `key:KeyW`, `mouse:Left`, `gamepad_axis:LeftStickX` or `axis:0`. The kinds without a name are `mouse_position_x`, `mouse_position_y`, `mouse_wheel_x`, `mouse_wheel_y`, `touch_x` and `touch_y`."
         )]
         axis: String,
         #[schemars(description = "Value to write to the axis.")]

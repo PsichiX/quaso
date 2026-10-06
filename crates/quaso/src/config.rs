@@ -11,6 +11,9 @@ pub struct Config {
     pub vsync: bool,
     pub double_buffer: Option<bool>,
     pub hardware_acceleration: Option<bool>,
+    /// The `QUASO_HEADLESS` environment variable set to `1` or `true` also turns it on.
+    #[serde(default)]
+    pub headless: bool,
 }
 
 impl Default for Config {
@@ -23,6 +26,7 @@ impl Default for Config {
             vsync: Self::default_vsync(),
             double_buffer: Default::default(),
             hardware_acceleration: Default::default(),
+            headless: Default::default(),
         }
     }
 }
@@ -50,6 +54,12 @@ impl Config {
 
     pub fn load_from_str(content: &str) -> Result<Self, Box<dyn Error>> {
         Ok(toml::from_str(content)?)
+    }
+
+    pub fn is_headless(&self) -> bool {
+        self.headless
+            || std::env::var("QUASO_HEADLESS")
+                .is_ok_and(|value| value == "1" || value.eq_ignore_ascii_case("true"))
     }
 
     pub fn to_app_config(&self, name: impl ToString) -> AppConfig {

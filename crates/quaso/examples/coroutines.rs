@@ -16,9 +16,9 @@ use quaso::{
             graphics::{CameraScaling, Shader},
             renderer::GlowTextureFiltering,
         },
+        spitfire_input::KeyCode,
         spitfire_input::{InputActionRef, InputConsume, InputMapping, VirtualAction},
         vek::Vec2,
-        windowing::event::VirtualKeyCode,
     },
 };
 use std::error::Error;
@@ -94,12 +94,11 @@ impl GameState for State {
         })
         .pivot(0.5.into());
 
-        context
-            .input
-            .push_mapping(InputMapping::default().consume(InputConsume::Hit).action(
-                VirtualAction::KeyButton(VirtualKeyCode::Escape),
-                self.exit.clone(),
-            ));
+        context.input.push_mapping(
+            InputMapping::default()
+                .consume(InputConsume::Hit)
+                .action(VirtualAction::KeyButton(KeyCode::Escape), self.exit.clone()),
+        );
 
         // Get GC reference of the interpolated position.
         // This allows us to read and write the position in an async-safe manner.

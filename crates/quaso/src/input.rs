@@ -1,8 +1,8 @@
 use crate::context::GameContext;
 use serde_json::{Value, json};
 use spitfire_input::{
-    GamepadAxis, GamepadButton, InputAction, InputAxis, InputConsume, InputContext, MouseButton,
-    VirtualAction, VirtualAxis, VirtualKeyCode,
+    GamepadAxis, GamepadButton, InputAction, InputAxis, InputConsume, InputContext, KeyCode,
+    MouseButton, VirtualAction, VirtualAxis,
 };
 
 // Turns a virtual action into the compact text name the agent protocol uses.
@@ -485,6 +485,8 @@ fn mouse_button_name(button: MouseButton) -> String {
         MouseButton::Left => "Left".to_owned(),
         MouseButton::Right => "Right".to_owned(),
         MouseButton::Middle => "Middle".to_owned(),
+        MouseButton::Back => "Back".to_owned(),
+        MouseButton::Forward => "Forward".to_owned(),
         MouseButton::Other(index) => index.to_string(),
     }
 }
@@ -496,7 +498,7 @@ fn split_name(text: &str) -> (&str, Option<&str>) {
     }
 }
 
-fn parse_key(text: &str) -> Result<VirtualKeyCode, String> {
+fn parse_key(text: &str) -> Result<KeyCode, String> {
     serde_json::from_value(Value::String(text.to_owned()))
         .map_err(|_| format!("`{text}` does not name a keyboard key"))
 }
@@ -516,6 +518,8 @@ fn parse_mouse_button(text: &str) -> Result<MouseButton, String> {
         "Left" => Ok(MouseButton::Left),
         "Right" => Ok(MouseButton::Right),
         "Middle" => Ok(MouseButton::Middle),
+        "Back" => Ok(MouseButton::Back),
+        "Forward" => Ok(MouseButton::Forward),
         _ => text
             .parse::<u16>()
             .map(MouseButton::Other)
@@ -535,8 +539,8 @@ mod tests {
         parse_axis,
     };
     use spitfire_input::{
-        InputAction, InputActionRef, InputAxisRef, InputContext, InputMapping, MouseButton,
-        VirtualAction, VirtualAxis, VirtualKeyCode,
+        InputAction, InputActionRef, InputAxisRef, InputContext, InputMapping, KeyCode,
+        MouseButton, VirtualAction, VirtualAxis,
     };
 
     /// Drives one frame the way the game loop does. `steps` is how many fixed
@@ -557,7 +561,7 @@ mod tests {
     #[test]
     fn test_action_and_axis_names_round_trip() {
         for action in [
-            VirtualAction::KeyButton(VirtualKeyCode::Space),
+            VirtualAction::KeyButton(KeyCode::Space),
             VirtualAction::MouseButton(MouseButton::Left),
             VirtualAction::MouseButton(MouseButton::Other(7)),
             VirtualAction::Axis(3),
@@ -566,7 +570,7 @@ mod tests {
             assert_eq!(parse_action(&action_name(&action)), Ok(action));
         }
         for axis in [
-            VirtualAxis::KeyButton(VirtualKeyCode::Space),
+            VirtualAxis::KeyButton(KeyCode::Space),
             VirtualAxis::MousePositionX,
             VirtualAxis::MouseWheelY,
             VirtualAxis::TouchY,
@@ -589,15 +593,16 @@ mod tests {
     fn test_a_press_of_one_frame_presses_then_releases() {
         let mut input = InputContext::default();
         let action = InputActionRef::default();
-        input.push_mapping(InputMapping::default().name("test").action(
-            VirtualAction::KeyButton(VirtualKeyCode::Space),
-            action.clone(),
-        ));
+        input.push_mapping(
+            InputMapping::default()
+                .name("test")
+                .action(VirtualAction::KeyButton(KeyCode::Space), action.clone()),
+        );
         let mut control = GameInputControl::default();
         let mut frames = Frames::default();
         control.press(
             None,
-            VirtualAction::KeyButton(VirtualKeyCode::Space),
+            VirtualAction::KeyButton(KeyCode::Space),
             Some(InputBudget::Frames(1)),
         );
 
@@ -617,12 +622,11 @@ mod tests {
         let mut input = InputContext::default();
         let action = InputActionRef::default();
         input.push_mapping(
-            InputMapping::default()
-                .action(VirtualAction::KeyButton(VirtualKeyCode::A), action.clone()),
+            InputMapping::default().action(VirtualAction::KeyButton(KeyCode::KeyA), action.clone()),
         );
         let mut control = GameInputControl::default();
         let mut frames = Frames::default();
-        control.press(None, VirtualAction::KeyButton(VirtualKeyCode::A), None);
+        control.press(None, VirtualAction::KeyButton(KeyCode::KeyA), None);
 
         frames.run(&mut control, &input, 0);
         assert_eq!(action.get(), InputAction::Pressed);
@@ -630,7 +634,7 @@ mod tests {
             frames.run(&mut control, &input, 0);
             assert_eq!(action.get(), InputAction::Hold);
         }
-        control.release(None, VirtualAction::KeyButton(VirtualKeyCode::A));
+        control.release(None, VirtualAction::KeyButton(KeyCode::KeyA));
         frames.run(&mut control, &input, 0);
         assert_eq!(action.get(), InputAction::Released);
         assert_eq!(control.pending_actions(), 0);
@@ -683,15 +687,15 @@ mod tests {
     fn test_a_step_budget_waits_for_a_step() {
         let mut input = InputContext::default();
         let action = InputActionRef::default();
-        input.push_mapping(InputMapping::default().action(
-            VirtualAction::KeyButton(VirtualKeyCode::Escape),
-            action.clone(),
-        ));
+        input.push_mapping(
+            InputMapping::default()
+                .action(VirtualAction::KeyButton(KeyCode::Escape), action.clone()),
+        );
         let mut control = GameInputControl::default();
         let mut frames = Frames::default();
         control.press(
             None,
-            VirtualAction::KeyButton(VirtualKeyCode::Escape),
+            VirtualAction::KeyButton(KeyCode::Escape),
             Some(InputBudget::Steps(1)),
         );
 
@@ -711,14 +715,13 @@ mod tests {
         let mut input = InputContext::default();
         let action = InputActionRef::default();
         input.push_mapping(
-            InputMapping::default()
-                .action(VirtualAction::KeyButton(VirtualKeyCode::D), action.clone()),
+            InputMapping::default().action(VirtualAction::KeyButton(KeyCode::KeyD), action.clone()),
         );
         let mut control = GameInputControl::default();
         let mut frames = Frames::default();
         control.press(
             None,
-            VirtualAction::KeyButton(VirtualKeyCode::D),
+            VirtualAction::KeyButton(KeyCode::KeyD),
             Some(InputBudget::Steps(3)),
         );
 
@@ -740,14 +743,13 @@ mod tests {
         let mut input = InputContext::default();
         let action = InputActionRef::default();
         input.push_mapping(
-            InputMapping::default()
-                .action(VirtualAction::KeyButton(VirtualKeyCode::D), action.clone()),
+            InputMapping::default().action(VirtualAction::KeyButton(KeyCode::KeyD), action.clone()),
         );
         let mut control = GameInputControl::default();
         let mut frames = Frames::default();
         control.press(
             None,
-            VirtualAction::KeyButton(VirtualKeyCode::D),
+            VirtualAction::KeyButton(KeyCode::KeyD),
             Some(InputBudget::Steps(2)),
         );
 
@@ -766,13 +768,12 @@ mod tests {
         let mut input = InputContext::default();
         let action = InputActionRef::default();
         input.push_mapping(
-            InputMapping::default()
-                .action(VirtualAction::KeyButton(VirtualKeyCode::D), action.clone()),
+            InputMapping::default().action(VirtualAction::KeyButton(KeyCode::KeyD), action.clone()),
         );
         let mut control = GameInputControl::default();
         control.press(
             None,
-            VirtualAction::KeyButton(VirtualKeyCode::D),
+            VirtualAction::KeyButton(KeyCode::KeyD),
             Some(InputBudget::Steps(1)),
         );
 
@@ -821,18 +822,18 @@ mod tests {
         input.push_mapping(
             InputMapping::default()
                 .name("wanted")
-                .action(VirtualAction::KeyButton(VirtualKeyCode::A), wanted.clone()),
+                .action(VirtualAction::KeyButton(KeyCode::KeyA), wanted.clone()),
         );
         input.push_mapping(
             InputMapping::default()
                 .name("other")
-                .action(VirtualAction::KeyButton(VirtualKeyCode::A), other.clone()),
+                .action(VirtualAction::KeyButton(KeyCode::KeyA), other.clone()),
         );
         let mut control = GameInputControl::default();
         let mut frames = Frames::default();
         control.press(
             Some("wanted".to_owned()),
-            VirtualAction::KeyButton(VirtualKeyCode::A),
+            VirtualAction::KeyButton(KeyCode::KeyA),
             Some(InputBudget::Frames(1)),
         );
         frames.run(&mut control, &input, 0);
@@ -840,14 +841,14 @@ mod tests {
         assert_eq!(wanted.get(), InputAction::Pressed);
         assert_eq!(other.get(), InputAction::Idle);
         assert_eq!(
-            count_action_refs(&input, None, &VirtualAction::KeyButton(VirtualKeyCode::A)),
+            count_action_refs(&input, None, &VirtualAction::KeyButton(KeyCode::KeyA)),
             2
         );
         assert_eq!(
             count_action_refs(
                 &input,
                 Some("wanted"),
-                &VirtualAction::KeyButton(VirtualKeyCode::A)
+                &VirtualAction::KeyButton(KeyCode::KeyA)
             ),
             1
         );
@@ -855,7 +856,7 @@ mod tests {
             count_action_refs(
                 &input,
                 Some("missing"),
-                &VirtualAction::KeyButton(VirtualKeyCode::A)
+                &VirtualAction::KeyButton(KeyCode::KeyA)
             ),
             0
         );
@@ -868,12 +869,12 @@ mod tests {
         let axis = InputAxisRef::default();
         input.push_mapping(
             InputMapping::default()
-                .action(VirtualAction::KeyButton(VirtualKeyCode::A), action.clone())
+                .action(VirtualAction::KeyButton(KeyCode::KeyA), action.clone())
                 .axis(VirtualAxis::MouseWheelY, axis.clone()),
         );
         let mut control = GameInputControl::default();
         let mut frames = Frames::default();
-        control.press(None, VirtualAction::KeyButton(VirtualKeyCode::A), None);
+        control.press(None, VirtualAction::KeyButton(KeyCode::KeyA), None);
         control.axis(
             None,
             VirtualAxis::MouseWheelY,

@@ -32,11 +32,11 @@ use quaso::{
             graphics::{CameraScaling, Shader},
             renderer::GlowTextureFiltering,
         },
+        spitfire_input::KeyCode,
         spitfire_input::{
             CardinalInputCombinator, InputActionRef, InputConsume, InputMapping, VirtualAction,
         },
         vek::Vec2,
-        windowing::event::VirtualKeyCode,
     },
 };
 use std::error::Error;
@@ -148,7 +148,7 @@ fn drive(handle: GameCommandsHandle) {
     );
     report(
         "input.press",
-        call("input.press", json!({ "action": "key:D", "steps": 10 })),
+        call("input.press", json!({ "action": "key:KeyD", "steps": 10 })),
     );
     report("time.step", call("time.step", json!({ "count": 10 })));
 
@@ -261,10 +261,10 @@ impl GameState for State {
         context.input.push_mapping(
             InputMapping::default()
                 .consume(InputConsume::Hit)
-                .action(VirtualAction::KeyButton(VirtualKeyCode::A), move_left)
-                .action(VirtualAction::KeyButton(VirtualKeyCode::D), move_right)
-                .action(VirtualAction::KeyButton(VirtualKeyCode::W), move_up)
-                .action(VirtualAction::KeyButton(VirtualKeyCode::S), move_down),
+                .action(VirtualAction::KeyButton(KeyCode::KeyA), move_left)
+                .action(VirtualAction::KeyButton(KeyCode::KeyD), move_right)
+                .action(VirtualAction::KeyButton(KeyCode::KeyW), move_up)
+                .action(VirtualAction::KeyButton(KeyCode::KeyS), move_down),
         );
     }
 

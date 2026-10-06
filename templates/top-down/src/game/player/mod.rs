@@ -26,9 +26,9 @@ use quaso::{
             utils::{Drawable, ShaderRef, TextureRef},
         },
         spitfire_glow::renderer::GlowUniformValue,
+        spitfire_input::KeyCode,
         spitfire_input::{CardinalInputCombinator, InputActionRef, InputMapping, VirtualAction},
         vek::{Vec2, Vec3},
-        windowing::event::VirtualKeyCode,
     },
 };
 
@@ -187,20 +187,20 @@ impl PlayerState {
         });
 
         let mapping = InputMapping::default()
-            .action(VirtualAction::KeyButton(VirtualKeyCode::A), left)
-            .action(VirtualAction::KeyButton(VirtualKeyCode::D), right)
-            .action(VirtualAction::KeyButton(VirtualKeyCode::W), up)
-            .action(VirtualAction::KeyButton(VirtualKeyCode::S), down)
+            .action(VirtualAction::KeyButton(KeyCode::KeyA), left)
+            .action(VirtualAction::KeyButton(KeyCode::KeyD), right)
+            .action(VirtualAction::KeyButton(KeyCode::KeyW), up)
+            .action(VirtualAction::KeyButton(KeyCode::KeyS), down)
             .action(
-                VirtualAction::KeyButton(VirtualKeyCode::Space),
+                VirtualAction::KeyButton(KeyCode::Space),
                 state.input.attack.clone(),
             )
             .action(
-                VirtualAction::KeyButton(VirtualKeyCode::Q),
+                VirtualAction::KeyButton(KeyCode::KeyQ),
                 state.input.weapon_prev.clone(),
             )
             .action(
-                VirtualAction::KeyButton(VirtualKeyCode::E),
+                VirtualAction::KeyButton(KeyCode::KeyE),
                 state.input.weapon_next.clone(),
             );
 

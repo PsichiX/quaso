@@ -1748,7 +1748,7 @@ impl GameInstance {
         if !self.next_frame_queue.is_empty() {
             self.jobs.jobs.submit_queue(&self.next_frame_queue);
         }
-        while !self
+        while self
             .jobs
             .jobs
             .queue()
@@ -1873,7 +1873,7 @@ impl AppState<Vertex> for GameInstance {
         }
     }
 
-    fn on_event(&mut self, event: Event<()>, _: &mut Window) -> bool {
+    fn on_event(&mut self, event: Event<()>, _: Option<&Window>) -> bool {
         self.process_event(&event)
     }
 }

@@ -11,11 +11,11 @@ use quaso::{
     third_party::{
         spitfire_draw::utils::Drawable,
         spitfire_glow::graphics::{CameraScaling, Shader},
+        spitfire_input::KeyCode,
         spitfire_input::{
             CardinalInputCombinator, InputActionRef, InputConsume, InputMapping, VirtualAction,
         },
         vek::Vec2,
-        windowing::event::VirtualKeyCode,
     },
 };
 use std::error::Error;
@@ -147,31 +147,16 @@ impl GameState for State {
         context.input.push_mapping(
             InputMapping::default()
                 .consume(InputConsume::Hit)
-                .action(
-                    VirtualAction::KeyButton(VirtualKeyCode::A),
-                    move_left.clone(),
-                )
-                .action(
-                    VirtualAction::KeyButton(VirtualKeyCode::D),
-                    move_right.clone(),
-                )
-                .action(VirtualAction::KeyButton(VirtualKeyCode::W), move_up.clone())
-                .action(
-                    VirtualAction::KeyButton(VirtualKeyCode::S),
-                    move_down.clone(),
-                )
-                .action(VirtualAction::KeyButton(VirtualKeyCode::Left), move_left)
-                .action(VirtualAction::KeyButton(VirtualKeyCode::Right), move_right)
-                .action(VirtualAction::KeyButton(VirtualKeyCode::Up), move_up)
-                .action(VirtualAction::KeyButton(VirtualKeyCode::Down), move_down)
-                .action(
-                    VirtualAction::KeyButton(VirtualKeyCode::Key1),
-                    self.lod0.clone(),
-                )
-                .action(
-                    VirtualAction::KeyButton(VirtualKeyCode::Key2),
-                    self.lod1.clone(),
-                ),
+                .action(VirtualAction::KeyButton(KeyCode::KeyA), move_left.clone())
+                .action(VirtualAction::KeyButton(KeyCode::KeyD), move_right.clone())
+                .action(VirtualAction::KeyButton(KeyCode::KeyW), move_up.clone())
+                .action(VirtualAction::KeyButton(KeyCode::KeyS), move_down.clone())
+                .action(VirtualAction::KeyButton(KeyCode::ArrowLeft), move_left)
+                .action(VirtualAction::KeyButton(KeyCode::ArrowRight), move_right)
+                .action(VirtualAction::KeyButton(KeyCode::ArrowUp), move_up)
+                .action(VirtualAction::KeyButton(KeyCode::ArrowDown), move_down)
+                .action(VirtualAction::KeyButton(KeyCode::Digit1), self.lod0.clone())
+                .action(VirtualAction::KeyButton(KeyCode::Digit2), self.lod1.clone()),
         );
     }
 

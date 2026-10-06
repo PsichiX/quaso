@@ -40,11 +40,11 @@ use quaso::{
             graphics::CameraScaling,
             renderer::{GlowBlending, GlowTextureFiltering, GlowTextureFormat, GlowUniformValue},
         },
+        spitfire_input::KeyCode,
         spitfire_input::{
             InputActionRef, InputConsume, InputMapping, InputMappingRef, VirtualAction,
         },
         typid::ID,
-        windowing::event::VirtualKeyCode,
     },
 };
 use std::collections::BTreeMap;
@@ -111,12 +111,13 @@ impl GameState for Gameplay {
             Some(handle)
         };
 
-        self.exit_handle = Some(context.input.push_mapping(
-            InputMapping::default().consume(InputConsume::Hit).action(
-                VirtualAction::KeyButton(VirtualKeyCode::Escape),
-                self.exit.clone(),
+        self.exit_handle = Some(
+            context.input.push_mapping(
+                InputMapping::default()
+                    .consume(InputConsume::Hit)
+                    .action(VirtualAction::KeyButton(KeyCode::Escape), self.exit.clone()),
             ),
-        ));
+        );
 
         self.player.activate(&mut context);
 
