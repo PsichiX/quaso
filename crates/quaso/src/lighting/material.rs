@@ -1,3 +1,4 @@
+use crate::lighting::color::{light_to_linear, srgb_to_linear};
 use spitfire_draw::{
     context::DrawContext,
     nine_slice_sprite::NineSliceSprite,
@@ -19,6 +20,7 @@ pub const GBUFFER_SHADER: &str = "lighting/gbuffer";
 pub const GBUFFER_TEXT_SHADER: &str = "lighting/gbuffer-text";
 pub const FORWARD_SHADER: &str = "lighting/forward";
 pub const LIGHT_MAP_TEXTURE: &str = "lighting/light-map";
+pub const OPEN_LIGHT_TEXTURE: &str = "lighting/open-light";
 pub const WATER_SHADER: &str = "lighting/water";
 pub const SCENE_COLOR_TEXTURE: &str = "lighting/scene-color";
 pub const SHADOW_TEXTURE: &str = "lighting/shadow";
@@ -42,6 +44,11 @@ pub struct LightMaterial {
     pub surface: SurfaceLighting,
     /// Water draws only over submerged surfaces, so objects above the water stay visible.
     pub submerged: bool,
+    /// The surface lies above the light field occluders, as a canopy above its trunk. Such a
+    /// surface takes the light of the open space around an occluder under it. A ground surface
+    /// next to an occluder keeps its own light, because the coarse occluder texels also cover
+    /// the ground around the occluder.
+    pub overhead: bool,
     /// The vertex color RGB scales the emission and does not tint the albedo.
     /// A particle emitter then gives each particle its own glow and still draws all of them
     /// in one batch.
@@ -65,6 +72,7 @@ impl Default for LightMaterial {
             absorption_map: None,
             surface: SurfaceLighting::default(),
             submerged: false,
+            overhead: false,
             vertex_emission: false,
         }
     }
@@ -87,7 +95,7 @@ impl LightMaterial {
 
     pub fn absorption_from_tint(tint: Rgb<f32>, thickness: f32) -> Rgb<f32> {
         let thickness = thickness.max(f32::EPSILON);
-        tint.map(|channel| -channel.clamp(1.0e-6, 1.0).ln() / thickness)
+        srgb_to_linear(tint).map(|channel| -channel.clamp(1.0e-6, 1.0).ln() / thickness)
     }
 
     pub fn emission(mut self, color: Rgb<f32>, intensity: f32) -> Self {
@@ -125,20 +133,25 @@ impl LightMaterial {
         self
     }
 
+    pub fn overhead(mut self) -> Self {
+        self.overhead = true;
+        self
+    }
+
     pub fn vertex_emission(mut self) -> Self {
         self.vertex_emission = true;
         self
     }
 
-    /// The normal target blue channel keeps two flags: smooth surface (2) and submerged (1).
-    /// The value is divided by 4, so it survives the 8 bit target and the coverage division.
+    /// The normal target blue channel keeps three flags: overhead (4), smooth surface (2) and
+    /// submerged (1). The value is divided by 8, so it survives the 8 bit target and the coverage division.
     fn surface_mode(&self) -> f32 {
         let smooth = if self.surface == SurfaceLighting::Smooth {
             2
         } else {
             0
         };
-        (smooth + self.submerged as u8) as f32 / 4.0
+        (4 * self.overhead as u8 + smooth + self.submerged as u8) as f32 / 8.0
     }
 
     fn apply<T: Extend<SpriteTexture> + DerefMut<Target = [SpriteTexture]>>(
@@ -186,11 +199,18 @@ impl LightMaterial {
                 maps |= MAP_ABSORPTION;
             }
             if mode == LightMode::Forward {
-                textures.extend([SpriteTexture {
-                    sampler: "u_light_map".into(),
-                    texture: TextureRef::name(LIGHT_MAP_TEXTURE),
-                    filtering: GlowTextureFiltering::Linear,
-                }]);
+                textures.extend([
+                    SpriteTexture {
+                        sampler: "u_light_map".into(),
+                        texture: TextureRef::name(LIGHT_MAP_TEXTURE),
+                        filtering: GlowTextureFiltering::Linear,
+                    },
+                    SpriteTexture {
+                        sampler: "u_open_light".into(),
+                        texture: TextureRef::name(OPEN_LIGHT_TEXTURE),
+                        filtering: GlowTextureFiltering::LinearMipmap,
+                    },
+                ]);
             }
         }
         *shader = Some(ShaderRef::name(shader_name));
@@ -201,7 +221,7 @@ impl LightMaterial {
         uniforms.insert("u_maps".into(), GlowUniformValue::I1(maps));
         uniforms.insert(
             "u_emission".into(),
-            GlowUniformValue::F3(self.emission.into_array()),
+            GlowUniformValue::F3(light_to_linear(self.emission).into_array()),
         );
         uniforms.insert(
             "u_absorption".into(),
@@ -437,9 +457,12 @@ impl WaterMaterial {
                 ("u_maps", GlowUniformValue::I1(maps)),
                 (
                     "u_transmittance",
-                    GlowUniformValue::F3(self.transmittance.into_array()),
+                    GlowUniformValue::F3(srgb_to_linear(self.transmittance).into_array()),
                 ),
-                ("u_scatter", GlowUniformValue::F3(self.scatter.into_array())),
+                (
+                    "u_scatter",
+                    GlowUniformValue::F3(srgb_to_linear(self.scatter).into_array()),
+                ),
                 ("u_refraction", GlowUniformValue::F1(self.refraction)),
                 ("u_reflectivity", GlowUniformValue::F1(self.reflectivity)),
                 ("u_reach", GlowUniformValue::F1(self.reach)),

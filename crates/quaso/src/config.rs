@@ -14,6 +14,8 @@ pub struct Config {
     /// The `QUASO_HEADLESS` environment variable set to `1` or `true` also turns it on.
     #[serde(default)]
     pub headless: bool,
+    #[serde(default)]
+    pub max_pixel_ratio: Option<f64>,
 }
 
 impl Default for Config {
@@ -27,6 +29,7 @@ impl Default for Config {
             double_buffer: Default::default(),
             hardware_acceleration: Default::default(),
             headless: Default::default(),
+            max_pixel_ratio: Default::default(),
         }
     }
 }
@@ -72,6 +75,7 @@ impl Config {
             vsync: self.vsync,
             double_buffer: self.double_buffer,
             hardware_acceleration: self.hardware_acceleration,
+            max_pixel_ratio: self.max_pixel_ratio,
             color: [0.0, 0.0, 0.0, 0.0],
             ..Default::default()
         }

@@ -1,12 +1,12 @@
-use crate::game::forest::{Forest, map};
+use crate::game::forest::{Forest, lit, map, set_emitter};
 use quaso::{
-    context::GameContext,
-    lighting::material::{LightMaterial, Lit},
+    lighting::material::LightMaterial,
+    scene::{Emitter, NodeId, Primitive, Scene, SceneNode},
     third_party::{
         spitfire_draw::{
             particles::{ParticleEmitter, ParticleInstance},
             primitives::PrimitivesEmitter,
-            utils::{Drawable, Vertex},
+            utils::Vertex,
         },
         vek::{Rgb, Rgba, Vec2},
     },
@@ -129,10 +129,77 @@ impl Kitsune {
         Vec2::new(angle.cos(), angle.sin())
     }
 
-    pub fn draw(&self, context: &mut GameContext, forest: &Forest) {
-        if self.presence <= 0.01 {
+    pub fn build(&self, scene: &mut Scene, parent: NodeId) -> KitsuneNodes {
+        let body = lit(
+            scene,
+            parent,
+            SceneNode::triangles(
+                PrimitivesEmitter::single(map("textures/kitsune", "u_image")),
+                Vec::new(),
+            ),
+            LightMaterial::filter(Rgb::new(0.8, 0.85, 0.95), 40.0)
+                .normal_map(map("textures/kitsune-normal", "u_normal_map")),
+        );
+        scene.attach(
+            body,
+            Emitter::new(TATTOO_COLOR, 0.0).map(map("textures/kitsune-emission", "u_emission_map")),
+        );
+        let foxfire = lit(
+            scene,
+            parent,
+            SceneNode::particles(
+                ParticleEmitter::single(map("textures/flame", "u_image")),
+                Vec::new(),
+            ),
+            LightMaterial::opaque().vertex_emission(),
+        );
+        scene.attach(foxfire, Emitter::new(FOXFIRE_COLOR, 0.0));
+        KitsuneNodes { body, foxfire }
+    }
+
+    pub fn animate(&self, scene: &mut Scene, nodes: &KitsuneNodes, forest: &Forest) {
+        let visible = self.presence > 0.01;
+        for node in [nodes.body, nodes.foxfire] {
+            if let Some(mut node) = scene.node_mut(node) {
+                node.visible = visible;
+            }
+        }
+        if !visible {
             return;
         }
+        set_emitter(
+            scene,
+            nodes.body,
+            8.0 * (1.0 + (self.time * 2.0).sin() * 0.3) * self.presence,
+        );
+        if let Some(mut node) = scene.node_mut(nodes.body)
+            && let Primitive::Triangles(body) = &mut node.primitive
+        {
+            body.triangles = self.triangles();
+        }
+        set_emitter(scene, nodes.foxfire, 6.0 * self.presence);
+        if let Some(mut node) = scene.node_mut(nodes.foxfire)
+            && let Primitive::Particles(foxfire) = &mut node.primitive
+        {
+            foxfire.instances = (0..FOXFIRE_COUNT)
+                .map(|index| {
+                    let angle = self.time * 1.3 + index as f32 * TAU / FOXFIRE_COUNT as f32;
+                    let bob = 1.0 + (self.time * 2.1 + index as f32).sin() * 0.15;
+                    let flicker = 1.0 + forest.flicker(self.time, 50.0 + index as f32) * 0.4;
+                    ParticleInstance::default()
+                        .position(
+                            self.joints[JOINTS / 2]
+                                + Vec2::new(angle.cos(), angle.sin()) * FOXFIRE_ORBIT * bob,
+                        )
+                        .size(7.0.into())
+                        .pivot(0.5.into())
+                        .tint(Rgba::new(flicker, flicker, flicker, 1.0))
+                })
+                .collect();
+        }
+    }
+
+    fn triangles(&self) -> Vec<[Vertex; 3]> {
         let color = [1.0, 1.0, 1.0, self.presence * 0.85];
         let edges = std::array::from_fn::<_, JOINTS, _>(|index| {
             let ahead = self.joints[index.saturating_sub(1)];
@@ -154,56 +221,30 @@ impl Kitsune {
                 color,
             })
         });
-        let triangles = edges.windows(2).flat_map(|pair| {
-            let [[a, b], [d, c]] = [pair[0], pair[1]];
-            let [u, v] = average([a, b, c, d].map(|vertex| [vertex.uv[0], vertex.uv[1]]));
-            let middle = Vertex {
-                position: average([a, b, c, d].map(|vertex| vertex.position)),
-                uv: [u, v, 0.0],
-                color,
-            };
-            [
-                [a, b, middle],
-                [b, c, middle],
-                [c, d, middle],
-                [d, a, middle],
-            ]
-        });
-        Lit::new(
-            PrimitivesEmitter::single(map("textures/kitsune", "u_image")),
-            LightMaterial::filter(Rgb::new(0.8, 0.85, 0.95), 40.0)
-                .emission(
-                    TATTOO_COLOR,
-                    8.0 * (1.0 + (self.time * 2.0).sin() * 0.3) * self.presence,
-                )
-                .emission_map(map("textures/kitsune-emission", "u_emission_map"))
-                .normal_map(map("textures/kitsune-normal", "u_normal_map")),
-        )
-        .object()
-        .emit_triangles(triangles)
-        .draw(context.draw, context.graphics);
-
-        let foxfire = Lit::new(
-            ParticleEmitter::single(map("textures/flame", "u_image")),
-            LightMaterial::emitter(FOXFIRE_COLOR, 6.0 * self.presence).vertex_emission(),
-        );
-        foxfire
-            .object()
-            .emit((0..FOXFIRE_COUNT).map(|index| {
-                let angle = self.time * 1.3 + index as f32 * TAU / FOXFIRE_COUNT as f32;
-                let bob = 1.0 + (self.time * 2.1 + index as f32).sin() * 0.15;
-                let flicker = 1.0 + forest.flicker(self.time, 50.0 + index as f32) * 0.4;
-                ParticleInstance::default()
-                    .position(
-                        self.joints[JOINTS / 2]
-                            + Vec2::new(angle.cos(), angle.sin()) * FOXFIRE_ORBIT * bob,
-                    )
-                    .size(7.0.into())
-                    .pivot(0.5.into())
-                    .tint(Rgba::new(flicker, flicker, flicker, 1.0))
-            }))
-            .draw(context.draw, context.graphics);
+        edges
+            .windows(2)
+            .flat_map(|pair| {
+                let [[a, b], [d, c]] = [pair[0], pair[1]];
+                let [u, v] = average([a, b, c, d].map(|vertex| [vertex.uv[0], vertex.uv[1]]));
+                let middle = Vertex {
+                    position: average([a, b, c, d].map(|vertex| vertex.position)),
+                    uv: [u, v, 0.0],
+                    color,
+                };
+                [
+                    [a, b, middle],
+                    [b, c, middle],
+                    [c, d, middle],
+                    [d, a, middle],
+                ]
+            })
+            .collect()
     }
+}
+
+pub struct KitsuneNodes {
+    body: NodeId,
+    foxfire: NodeId,
 }
 
 fn row(joint: usize) -> f32 {

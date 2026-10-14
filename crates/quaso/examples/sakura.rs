@@ -6,14 +6,19 @@ use quaso::{
     game::{GameInstance, GameState, GameStateChange},
     lighting::{
         Lighting, LightingDebugView, LightingStyle,
-        material::{LightMaterial, Lit, Shadow, ShadowMaterial, Water, WaterMaterial},
+        color::srgb_to_linear,
+        material::{LightMaterial, ShadowMaterial, WaterMaterial},
+    },
+    scene::{
+        Emitter, Forward, Light, NodeId, Primitive, Scene, SceneNode, ShadowCaster, Silhouette,
+        Water,
     },
     third_party::{
         noise::{NoiseFn, Perlin},
         spitfire_draw::{
             particles::{ParticleEmitter, ParticleInstance},
             sprite::{Sprite, SpriteTexture},
-            utils::{Drawable, TextureRef},
+            utils::TextureRef,
         },
         spitfire_glow::{
             graphics::{CameraScaling, Shader},
@@ -200,9 +205,12 @@ vec4 water_color(WaterSurface water) {
 const DAY_LENGTH: f32 = 120.0;
 const FAST_FORWARD: f32 = 8.0;
 const VIEW_HEIGHT: f32 = 600.0;
+const LIGHT_TEXEL: f32 = 8.0;
 const VIEW_REACH: f32 = 750.0;
 const WORLD: Vec2<f32> = Vec2::new(1400.0, 900.0);
 const TILE: f32 = 200.0;
+/// The ground covers the widest view at the clamped camera.
+const GROUND_EXTENT: Vec2<f32> = Vec2::new(1600.0, 1200.0);
 const PATH_WIDTH: f32 = 90.0;
 const PLAYER_SPEED: f32 = 120.0;
 const PLAYER_RUN: f32 = 2.2;
@@ -216,7 +224,8 @@ const TRUNK_SIZE: f32 = 70.0;
 const LANTERN_ROWS: [f32; 2] = [-62.0, 62.0];
 const LANTERN_SPACING: f32 = 140.0;
 const LANTERN_SIZE: f32 = 22.0;
-const LANTERN_COLOR: Rgb<f32> = Rgb::new(1.0, 0.68, 0.42);
+const LANTERN_FADE: f32 = 80.0;
+const LANTERN_COLOR: Rgb<f32> = Rgb::new(1.0, 0.84, 0.68);
 const PICNIC: Vec2<f32> = Vec2::new(-60.0, 360.0);
 const BLANKET_SIZE: Vec2<f32> = Vec2::new(300.0, 225.0);
 /// Two lanterns stand at the picnic, so the family is lit at night.
@@ -244,8 +253,12 @@ const PETAL_COUNT: usize = 280;
 const PETAL_SIZE: f32 = 13.0;
 const PETAL_TOP: f32 = 140.0;
 const PETAL_REST: f32 = 6.0;
-const NIGHT_KEY: f32 = 0.18;
-const DAY_KEY: f32 = 0.24;
+/// Shadow orders: the columns draw and erase first, then the crowns, then the petals.
+const COLUMN_SHADOWS: f32 = 0.0;
+const CROWN_SHADOWS: f32 = 1.0;
+const PETAL_SHADOWS: f32 = 2.0;
+const NIGHT_KEY: f32 = 0.07;
+const DAY_KEY: f32 = 0.1;
 
 /// A person at the picnic: texture, offset from the picnic center, size, and the height
 /// of the shadow caster. Each one faces the middle of the blanket.
@@ -315,10 +328,17 @@ struct Petal {
 
 struct State {
     lighting: Lighting,
+    scene: Scene,
+    nodes: Nodes,
     anime: bool,
     time: f32,
     day_time: f32,
+    /// SAKURA_DAY sets the day time and stops the day clock, for screenshots.
+    frozen_day: bool,
+    /// SAKURA_TIME sets the animation time and stops it and the petals, for screenshots.
+    frozen_time: bool,
     noise: Perlin,
+    /// SAKURA_PLAYER ("x,y") sets the start position, for screenshots.
     player: Vec2<f32>,
     facing: f32,
     petals: Vec<Petal>,
@@ -332,27 +352,46 @@ struct State {
 
 impl Default for State {
     fn default() -> Self {
-        let player = Vec2::new(160.0, 120.0);
+        let frozen = |name| {
+            std::env::var(name)
+                .ok()
+                .and_then(|value| value.parse::<f32>().ok())
+        };
+        let frozen_day = frozen("SAKURA_DAY");
+        let frozen_time = frozen("SAKURA_TIME");
+        let player = std::env::var("SAKURA_PLAYER")
+            .ok()
+            .and_then(|value| {
+                let (x, y) = value.split_once(',')?;
+                Some(Vec2::new(x.parse().ok()?, y.parse().ok()?))
+            })
+            .unwrap_or(Vec2::new(160.0, 120.0));
+        let mut scene = Scene::default();
+        let nodes = Nodes::build(&mut scene, player);
         let mut result = Self {
+            scene,
+            nodes,
             lighting: Lighting::default()
                 .with_debug_font("roboto.ttf")
                 .with_style(anime_style())
                 .with_uniform("u_bands", GlowUniformValue::F1(1.5))
                 .with_uniform("u_band_edge", GlowUniformValue::F1(0.08))
-                .with_uniform("u_shade_tint", GlowUniformValue::F3([0.62, 0.6, 0.95]))
+                .with_uniform("u_shade_tint", srgb_uniform(0.62, 0.6, 0.95))
                 .with_uniform("u_saturation", GlowUniformValue::F1(1.15))
-                .with_uniform("u_lift", GlowUniformValue::F3([0.035, 0.02, 0.06]))
+                .with_uniform("u_lift", srgb_uniform(0.035, 0.02, 0.06))
                 .with_uniform("u_vignette", GlowUniformValue::F1(0.35))
-                .with_uniform("u_ink", GlowUniformValue::F3([0.3, 0.18, 0.3]))
+                .with_uniform("u_ink", srgb_uniform(0.3, 0.18, 0.3))
                 .with_uniform("u_ink_width", GlowUniformValue::F1(1.5))
                 .with_uniform("u_rim", GlowUniformValue::F1(0.6))
-                .with_uniform("u_water_shallow", GlowUniformValue::F3([0.55, 0.85, 0.82]))
-                .with_uniform("u_water_deep", GlowUniformValue::F3([0.12, 0.38, 0.58]))
+                .with_uniform("u_water_shallow", srgb_uniform(0.55, 0.85, 0.82))
+                .with_uniform("u_water_deep", srgb_uniform(0.12, 0.38, 0.58))
                 .with_uniform("u_water_lines", GlowUniformValue::F1(0.5))
                 .with_uniform("u_water_flow", GlowUniformValue::F1(RIVER_FLOW / 60.0)),
             anime: true,
-            time: 0.0,
-            day_time: DAY_LENGTH * 0.3,
+            time: frozen_time.unwrap_or_default(),
+            day_time: DAY_LENGTH * frozen_day.unwrap_or(0.3),
+            frozen_day: frozen_day.is_some(),
+            frozen_time: frozen_time.is_some(),
             noise: Perlin::new(11),
             player,
             facing: 0.0,
@@ -364,6 +403,7 @@ impl Default for State {
             run: InputActionRef::default(),
             views: Vec::new(),
         };
+        result.lighting.config.texel_world = Some(LIGHT_TEXEL);
         for _ in 0..PETAL_COUNT {
             let mut petal = result.spawn_petal();
             petal.height = hash(petal.seed * 3.1) * PETAL_TOP;
@@ -373,15 +413,307 @@ impl Default for State {
     }
 }
 
+/// An overhead node that fades near the player.
+struct Fade {
+    node: NodeId,
+    position: Vec2<f32>,
+}
+
+/// The nodes that change in `update`. All other nodes stay as `build` makes them.
+struct Nodes {
+    koi: Vec<NodeId>,
+    lanterns: Vec<NodeId>,
+    player: NodeId,
+    river: NodeId,
+    resting_petals: NodeId,
+    falling_petals: NodeId,
+    petal_shadows: NodeId,
+    /// Each caster keeps its day opacity. The night makes all shadows weaker.
+    shadows: Vec<(NodeId, f32)>,
+    crowns: Vec<Fade>,
+}
+
+impl Nodes {
+    /// The sibling order is the draw order of the old immediate passes.
+    fn build(scene: &mut Scene, player: Vec2<f32>) -> Self {
+        let root = scene.root();
+        let mut shadows = Vec::new();
+        let ground = scene.spawn(root, SceneNode::group());
+        build_ground(scene, ground);
+        let river = scene.spawn(root, SceneNode::group());
+        let koi = build_river(scene, river, &mut shadows);
+        let picnic = scene.spawn(root, SceneNode::group());
+        build_picnic(scene, picnic, &mut shadows);
+        let trunks = scene.spawn(root, SceneNode::group());
+        for (position, _) in State::trees() {
+            let trunk = lit(
+                scene,
+                trunks,
+                SceneNode::sprite(sprite(
+                    "trunk",
+                    Vec2::zero(),
+                    TRUNK_SIZE.into(),
+                    position.x * 0.01,
+                ))
+                .position(position),
+                LightMaterial::opaque(),
+            );
+            let shape = sprite("trunk", Vec2::zero(), (TRUNK_SIZE * 0.4).into(), 0.0);
+            scene.attach(
+                trunk,
+                column_caster(shape, TREE_HEIGHT * 0.7, TRUNK_SIZE * 0.4),
+            );
+            shadows.push((trunk, 1.0));
+        }
+        let lanterns = scene.spawn(root, SceneNode::group());
+        let lanterns = State::lanterns()
+            .map(|position| {
+                let lantern = lit(
+                    scene,
+                    lanterns,
+                    SceneNode::sprite(sprite("chochin", Vec2::zero(), LANTERN_SIZE.into(), 0.0))
+                        .position(position),
+                    LightMaterial::opaque(),
+                );
+                scene.attach(lantern, Emitter::new(LANTERN_COLOR, 0.3));
+                lantern
+            })
+            .collect();
+        let player = lit(
+            scene,
+            root,
+            SceneNode::sprite(sprite("student", Vec2::zero(), PLAYER_SIZE.into(), 0.0))
+                .position(player),
+            figure(),
+        );
+        let shape = sprite("student", Vec2::zero(), (PLAYER_SIZE * 0.7).into(), 0.0);
+        scene.attach(player, column_caster(shape, 46.0, PLAYER_SIZE * 0.4));
+        shadows.push((player, 0.8));
+
+        let river_water = scene.spawn(
+            root,
+            SceneNode::sprite(sprite("river-depth", Vec2::zero(), RIVER_EXTENT, 0.0))
+                .position(Vec2::new(0.0, RIVER_Y)),
+        );
+        scene.attach(river_water, Water(river_material(0.0)));
+
+        let overhead = scene.spawn(root, SceneNode::group());
+        let resting_petals = petals(scene, overhead);
+        let crowns = State::trees()
+            .enumerate()
+            .map(|(index, (position, variant))| {
+                let shape = sprite(canopy(variant), Vec2::zero(), CANOPY_SIZE.into(), 0.0);
+                let node = scene.spawn(
+                    overhead,
+                    SceneNode::sprite(shape.clone())
+                        .position(position)
+                        .rotation(index as f32 * 1.3),
+                );
+                scene.attach(node, Forward);
+                scene.attach(
+                    node,
+                    ShadowCaster::new(ShadowMaterial::new(TREE_HEIGHT).softness(16.0))
+                        .shape(Silhouette::sprite(shape))
+                        .order(CROWN_SHADOWS),
+                );
+                shadows.push((node, 0.55));
+                Fade { node, position }
+            })
+            .collect();
+        let falling_petals = petals(scene, overhead);
+        let petal_shadows = scene.spawn(overhead, SceneNode::group());
+        scene.attach(
+            petal_shadows,
+            ShadowCaster::new(ShadowMaterial::new(1.0).softness(1.5).vertex_height())
+                .shape(Silhouette::particles(
+                    ParticleEmitter::single(asset("petals", "u_image")),
+                    Vec::new(),
+                ))
+                .order(PETAL_SHADOWS),
+        );
+        shadows.push((petal_shadows, 0.5));
+        Self {
+            koi,
+            lanterns,
+            player,
+            river: river_water,
+            resting_petals,
+            falling_petals,
+            petal_shadows,
+            shadows,
+            crowns,
+        }
+    }
+}
+
+/// The ground covers the widest view at the clamped camera. Each grass row is a group, so the
+/// scene skips the rows outside the view.
+fn build_ground(scene: &mut Scene, parent: NodeId) {
+    let tiles = (GROUND_EXTENT / TILE).ceil().as_::<i32>();
+    for y in -tiles.y..tiles.y {
+        let row = scene.spawn(parent, SceneNode::group());
+        for x in -tiles.x..tiles.x {
+            scene.spawn(
+                row,
+                SceneNode::sprite(
+                    Sprite::single(asset("grass", "u_image")).size((TILE + 0.5).into()),
+                )
+                .position(Vec2::new(x as f32, y as f32) * TILE),
+            );
+        }
+    }
+    let path_tiles = (GROUND_EXTENT.x / PATH_WIDTH).ceil() as i32;
+    for x in -path_tiles..path_tiles {
+        scene.spawn(
+            parent,
+            SceneNode::sprite(
+                Sprite::single(asset("path", "u_image")).size((PATH_WIDTH + 0.5).into()),
+            )
+            .position(Vec2::new(x as f32 * PATH_WIDTH, -PATH_WIDTH * 0.5)),
+        );
+    }
+}
+
+fn build_river(scene: &mut Scene, parent: NodeId, shadows: &mut Vec<(NodeId, f32)>) -> Vec<NodeId> {
+    lit(
+        scene,
+        parent,
+        SceneNode::sprite(sprite("river-bed", Vec2::zero(), RIVER_EXTENT, 0.0))
+            .position(Vec2::new(0.0, RIVER_Y)),
+        LightMaterial::default().submerged(),
+    );
+    let koi = (0..KOI_COUNT)
+        .map(|index| {
+            let name = if index % 3 == 0 { "koi-b" } else { "koi-a" };
+            lit(
+                scene,
+                parent,
+                SceneNode::sprite(sprite(name, Vec2::zero(), KOI_SIZE.into(), 0.0)),
+                LightMaterial::default().submerged(),
+            )
+        })
+        .collect();
+    for (x, across, size, rotation) in LILIES {
+        lit(
+            scene,
+            parent,
+            SceneNode::sprite(sprite("lily", Vec2::zero(), size.into(), 0.0))
+                .position(Vec2::new(
+                    x,
+                    RIVER_Y + river_offset(x) + across * river_half_width(x),
+                ))
+                .rotation(rotation),
+            figure(),
+        );
+    }
+    let bridge = lit(
+        scene,
+        parent,
+        SceneNode::sprite(sprite("bridge", Vec2::zero(), BRIDGE_SIZE, 0.0))
+            .position(State::bridge()),
+        figure(),
+    );
+    let shape = sprite("bridge", Vec2::zero(), BRIDGE_SIZE, 0.0);
+    scene.attach(bridge, column_caster(shape, 14.0, BRIDGE_SIZE.x));
+    shadows.push((bridge, 0.8));
+    koi
+}
+
+fn build_picnic(scene: &mut Scene, parent: NodeId, shadows: &mut Vec<(NodeId, f32)>) {
+    scene.spawn(
+        parent,
+        SceneNode::sprite(sprite("blanket", Vec2::zero(), BLANKET_SIZE, 0.0))
+            .position(PICNIC)
+            .rotation(0.04),
+    );
+    for (name, offset, size, rotation) in PROPS {
+        lit(
+            scene,
+            parent,
+            SceneNode::sprite(sprite(name, Vec2::zero(), size.into(), 0.0))
+                .position(PICNIC + offset)
+                .rotation(rotation),
+            figure(),
+        );
+    }
+    for (name, offset, size, height) in PEOPLE {
+        let person = lit(
+            scene,
+            parent,
+            SceneNode::sprite(sprite(name, Vec2::zero(), size.into(), 0.0))
+                .position(PICNIC + offset)
+                .rotation(facing(offset)),
+            figure(),
+        );
+        let shape = sprite(name, Vec2::zero(), (size * 0.8).into(), 0.0);
+        scene.attach(person, column_caster(shape, height, size * 0.5));
+        shadows.push((person, 0.8));
+    }
+}
+
+/// A trunk, a person or the bridge casts copies at several heights, so the shadow joins the
+/// ground. The copy at height zero covers the caster itself. All column casters share one
+/// shadow order, so their erasers clear every caster before the crowns and petals add shadows.
+fn column_caster(shape: Sprite, height: f32, size: f32) -> ShadowCaster {
+    ShadowCaster::new(ShadowMaterial::new(height).softness(2.0))
+        .shape(Silhouette::sprite(shape))
+        .column(0.05)
+        .column_size(size)
+        .erase_self()
+        .order(COLUMN_SHADOWS)
+}
+
+/// All petals of one layer draw as one particle batch.
+fn petals(scene: &mut Scene, parent: NodeId) -> NodeId {
+    let node = scene.spawn(
+        parent,
+        SceneNode::particles(
+            ParticleEmitter::single(asset("petals", "u_image")),
+            Vec::new(),
+        ),
+    );
+    scene.attach(node, Forward);
+    node
+}
+
+fn lit(scene: &mut Scene, parent: NodeId, node: SceneNode, material: LightMaterial) -> NodeId {
+    let node = scene.spawn(parent, node);
+    scene.attach(node, Light(material));
+    node
+}
+
+fn river_material(time: f32) -> WaterMaterial {
+    WaterMaterial {
+        transmittance: Rgb::new(0.3, 0.62, 0.68),
+        scatter: Rgb::new(0.02, 0.06, 0.08),
+        ripple_strength: 0.7,
+        foam: 0.7,
+        sparkles: 8.0,
+        ripple_scale: RIVER_EXTENT / 60.0,
+        time,
+        ..Default::default()
+    }
+}
+
+fn place(scene: &mut Scene, node: NodeId, position: Vec2<f32>, rotation: f32) {
+    if let Some(mut node) = scene.node_mut(node) {
+        node.transform.position = position;
+        node.transform.rotation = rotation;
+    }
+}
+
+fn set_particles(scene: &mut Scene, node: NodeId, instances: Vec<ParticleInstance>) {
+    if let Some(mut node) = scene.node_mut(node)
+        && let Primitive::Particles(particles) = &mut node.primitive
+    {
+        particles.instances = instances;
+    }
+}
+
 impl State {
     fn camera(&self) -> Vec2<f32> {
         let reach = WORLD - Vec2::new(VIEW_REACH * 0.85, VIEW_HEIGHT * 0.5);
         Vec2::partial_max(Vec2::partial_min(self.player, reach), -reach)
-    }
-
-    fn visible(&self, position: Vec2<f32>, size: f32) -> bool {
-        (position.x - self.camera().x).abs() < VIEW_REACH + size
-            && (position.y - self.camera().y).abs() < VIEW_HEIGHT * 0.5 + size
     }
 
     fn night(&self) -> f32 {
@@ -525,7 +857,7 @@ impl State {
         config.shadow_length = (1.0 / daylight.max(moonlight).max(0.25) - 0.5).min(2.5);
         config.sky = mix(
             Rgb::new(0.02, 0.02, 0.06),
-            Rgb::new(0.45, 0.52, 0.75),
+            Rgb::new(0.27, 0.31, 0.45),
             daylight.sqrt(),
         ) + Rgb::new(0.3, 0.14, 0.1) * dusk;
         config.sun = mix(
@@ -534,7 +866,7 @@ impl State {
             daylight,
         ) * daylight.sqrt()
             * 1.6
-            + Rgb::new(0.12, 0.15, 0.36) * moonlight.sqrt();
+            + Rgb::new(0.09, 0.11, 0.27) * moonlight.sqrt();
         config.ambient = Rgb::new(0.03, 0.025, 0.05);
         if let Some(adaptation) = &mut config.eye_adaptation {
             adaptation.focus = Some(self.player);
@@ -542,287 +874,81 @@ impl State {
         }
     }
 
-    fn draw_ground(&self, context: &mut GameContext) {
-        let camera = self.camera();
-        let first = ((camera - Vec2::new(VIEW_REACH, VIEW_HEIGHT)) / TILE).floor();
-        let last = ((camera + Vec2::new(VIEW_REACH, VIEW_HEIGHT)) / TILE).ceil();
-        for y in first.y as i32..last.y as i32 {
-            for x in first.x as i32..last.x as i32 {
-                Lit::new(
-                    Sprite::single(asset("grass", "u_image"))
-                        .position(Vec2::new(x as f32, y as f32) * TILE)
-                        .size((TILE + 0.5).into()),
-                    LightMaterial::default(),
-                )
-                .draw(context.draw, context.graphics);
-            }
-        }
-        let path_tile = PATH_WIDTH;
-        let first = ((camera.x - VIEW_REACH) / path_tile).floor() as i32;
-        let last = ((camera.x + VIEW_REACH) / path_tile).ceil() as i32;
-        for x in first..last {
-            Lit::new(
-                Sprite::single(asset("path", "u_image"))
-                    .position(Vec2::new(x as f32 * path_tile, -PATH_WIDTH * 0.5))
-                    .size((path_tile + 0.5).into()),
-                LightMaterial::default(),
-            )
-            .draw(context.draw, context.graphics);
-        }
-    }
-
-    fn draw_river(&self, context: &mut GameContext) {
-        Lit::new(
-            sprite("river-bed", Vec2::new(0.0, RIVER_Y), RIVER_EXTENT, 0.0),
-            LightMaterial::default().submerged(),
-        )
-        .draw(context.draw, context.graphics);
-        for index in 0..KOI_COUNT {
-            let position = self.koi_at(index, self.time);
-            if !self.visible(position, KOI_SIZE) {
-                continue;
-            }
-            let heading = self.koi_at(index, self.time + 0.1) - position;
-            Lit::new(
-                sprite(
-                    if index % 3 == 0 { "koi-b" } else { "koi-a" },
-                    position,
-                    KOI_SIZE.into(),
-                    heading.y.atan2(heading.x) + FRAC_PI_2,
-                ),
-                LightMaterial::default().submerged(),
-            )
-            .draw(context.draw, context.graphics);
-        }
-        for (x, across, size, rotation) in LILIES {
-            let position = Vec2::new(x, RIVER_Y + river_offset(x) + across * river_half_width(x));
-            Lit::new(sprite("lily", position, size.into(), rotation), figure())
-                .draw(context.draw, context.graphics);
-        }
-        Lit::new(sprite("bridge", Self::bridge(), BRIDGE_SIZE, 0.0), figure())
-            .draw(context.draw, context.graphics);
-    }
-
-    fn draw_water(&self, context: &mut GameContext) {
-        Water::new(
-            sprite("river-depth", Vec2::new(0.0, RIVER_Y), RIVER_EXTENT, 0.0),
-            WaterMaterial {
-                transmittance: Rgb::new(0.3, 0.62, 0.68),
-                scatter: Rgb::new(0.02, 0.06, 0.08),
-                ripple_strength: 0.7,
-                foam: 0.7,
-                sparkles: 8.0,
-                ripple_scale: RIVER_EXTENT / 60.0,
-                time: self.time,
-                ..Default::default()
-            },
-        )
-        .draw(context.draw, context.graphics);
-    }
-
-    fn draw_picnic(&self, context: &mut GameContext) {
-        Lit::new(
-            sprite("blanket", PICNIC, BLANKET_SIZE, 0.04),
-            LightMaterial::default(),
-        )
-        .draw(context.draw, context.graphics);
-        for (name, offset, size, rotation) in PROPS {
-            Lit::new(
-                sprite(name, PICNIC + offset, size.into(), rotation),
-                figure(),
-            )
-            .draw(context.draw, context.graphics);
-        }
-        for (name, offset, size, _) in PEOPLE {
-            Lit::new(
-                sprite(name, PICNIC + offset, size.into(), facing(offset)),
-                figure(),
-            )
-            .draw(context.draw, context.graphics);
-        }
-    }
-
-    fn draw_trunks(&self, context: &mut GameContext) {
-        for (position, _) in Self::trees() {
-            if self.visible(position, CANOPY_SIZE) {
-                Lit::new(
-                    sprite("trunk", position, TRUNK_SIZE.into(), position.x * 0.01),
-                    LightMaterial::opaque(),
-                )
-                .draw(context.draw, context.graphics);
-            }
-        }
-    }
-
-    fn draw_lanterns(&self, context: &mut GameContext) {
+    fn animate(&mut self) {
         let night = self.night();
-        for (index, position) in Self::lanterns().enumerate() {
-            if !self.visible(position, LANTERN_SIZE) {
-                continue;
-            }
-            let flicker =
-                1.0 + self.noise.get([(self.time * 2.0) as f64, index as f64]) as f32 * 0.15;
-            Lit::new(
-                sprite("chochin", position, LANTERN_SIZE.into(), 0.0),
-                LightMaterial::opaque().emission(LANTERN_COLOR, 0.3 + 3.5 * night * flicker),
-            )
-            .draw(context.draw, context.graphics);
-        }
-    }
-
-    fn draw_player(&self, context: &mut GameContext) {
-        Lit::new(
-            sprite("student", self.player, PLAYER_SIZE.into(), self.facing),
-            figure(),
-        )
-        .draw(context.draw, context.graphics);
-    }
-
-    /// The crowns cast a soft shadow, because light passes between the blossoms.
-    /// A trunk or a person casts copies at several heights, so the shadow joins the ground.
-    /// The copy at height zero covers the caster itself, so an eraser clears the caster
-    /// before the crowns and petals add their shadows on top.
-    fn draw_shadows(&self, context: &mut GameContext) {
-        let strength = 1.0 - self.night() * 0.7;
-        let length = self.lighting.config.shadow_length;
-        let trees = Self::trees()
-            .enumerate()
-            .filter(|(_, (position, _))| self.visible(*position, CANOPY_SIZE * 2.0))
+        let strength = 1.0 - night * 0.7;
+        let koi = (0..KOI_COUNT)
+            .map(|index| {
+                let position = self.koi_at(index, self.time);
+                let heading = self.koi_at(index, self.time + 0.1) - position;
+                (position, heading.y.atan2(heading.x) + FRAC_PI_2)
+            })
             .collect::<Vec<_>>();
-        let mut casters = Vec::new();
-        for (_, (position, _)) in &trees {
-            casters.push((
-                sprite("trunk", *position, (TRUNK_SIZE * 0.4).into(), 0.0),
-                TREE_HEIGHT * 0.7,
-                TRUNK_SIZE * 0.4,
-                1.0,
-            ));
+        let camera = self.camera();
+        let glow = Self::lanterns()
+            .enumerate()
+            .map(|(index, position)| {
+                let flicker =
+                    1.0 + self.noise.get([(self.time * 2.0) as f64, index as f64]) as f32 * 0.15;
+                0.3 + 5.0 * night * flicker * view_fade(position, camera)
+            })
+            .collect::<Vec<_>>();
+        let resting = self
+            .petals
+            .iter()
+            .filter(|petal| petal.height <= 0.0)
+            .map(|petal| {
+                let alpha = (petal.rest / 1.5).clamp(0.0, 1.0);
+                petal_instance(petal).tint(Rgba::new(1.0, 1.0, 1.0, alpha))
+            })
+            .collect();
+        let falling = self
+            .petals
+            .iter()
+            .filter(|petal| petal.height > 0.0)
+            .map(petal_instance)
+            .collect();
+        let shadows = self
+            .petals
+            .iter()
+            .filter(|petal| petal.height > 1.0)
+            .map(|petal| petal_instance(petal).tint(Rgba::new(petal.height, 1.0, 1.0, 1.0)))
+            .collect();
+        let (time, player, facing) = (self.time, self.player, self.facing);
+        let Self { scene, nodes, .. } = self;
+
+        for (node, (position, rotation)) in nodes.koi.iter().zip(koi) {
+            place(scene, *node, position, rotation);
         }
-        for (name, offset, size, height) in PEOPLE {
-            casters.push((
-                sprite(name, PICNIC + offset, (size * 0.8).into(), facing(offset)),
-                height,
-                size * 0.5,
-                0.8,
-            ));
-        }
-        casters.push((
-            sprite("bridge", Self::bridge(), BRIDGE_SIZE, 0.0),
-            14.0,
-            BRIDGE_SIZE.x,
-            0.8,
-        ));
-        casters.push((
-            sprite(
-                "student",
-                self.player,
-                (PLAYER_SIZE * 0.7).into(),
-                self.facing,
-            ),
-            46.0,
-            PLAYER_SIZE * 0.4,
-            0.8,
-        ));
-        for (caster, height, size, opacity) in &casters {
-            for step in column(*height, *size, length) {
-                Shadow::new(
-                    caster.clone(),
-                    ShadowMaterial::new(step)
-                        .opacity(opacity * strength)
-                        .softness(2.0 + step * 0.05),
-                )
-                .draw(context.draw, context.graphics);
+        for (node, intensity) in nodes.lanterns.iter().zip(glow) {
+            if let Some(mut emitter) = scene.attr_mut::<Emitter>(*node) {
+                emitter.intensity = intensity;
             }
         }
-        for (caster, ..) in casters {
-            Shadow::new(caster, ShadowMaterial::eraser()).draw(context.draw, context.graphics);
+        place(scene, nodes.player, player, facing);
+        if let Some(mut water) = scene.attr_mut::<Water>(nodes.river) {
+            water.0.time = time;
         }
-        for (index, (position, variant)) in trees {
-            Shadow::new(
-                sprite(
-                    canopy(variant),
-                    position,
-                    CANOPY_SIZE.into(),
-                    index as f32 * 1.3,
-                ),
-                ShadowMaterial::new(TREE_HEIGHT)
-                    .opacity(0.55 * strength)
-                    .softness(16.0),
-            )
-            .draw(context.draw, context.graphics);
+        set_particles(scene, nodes.resting_petals, resting);
+        set_particles(scene, nodes.falling_petals, falling);
+        if let Some(mut caster) = scene.attr_mut::<ShadowCaster>(nodes.petal_shadows)
+            && let Silhouette::Particles(particles) = &mut caster.shape
+        {
+            particles.instances = shadows;
         }
-        let petals = Shadow::new(
-            ParticleEmitter::single(asset("petals", "u_image")),
-            ShadowMaterial::new(1.0)
-                .opacity(0.5 * strength)
-                .softness(1.5)
-                .vertex_height(),
-        );
-        petals
-            .object()
-            .emit(
-                self.petals
-                    .iter()
-                    .filter(|petal| petal.height > 1.0)
-                    .map(|petal| {
-                        petal_instance(petal).tint(Rgba::new(petal.height, 1.0, 1.0, 1.0))
-                    }),
-            )
-            .draw(context.draw, context.graphics);
-    }
-
-    /// Crowns and petals use the forward pass. A crown is see-through near the player.
-    /// All petals of one layer draw as one particle batch.
-    fn draw_overhead(&self, context: &mut GameContext) {
-        let petals = Lit::forward(
-            ParticleEmitter::single(asset("petals", "u_image")),
-            LightMaterial::default(),
-        );
-        petals
-            .object()
-            .emit(
-                self.petals
-                    .iter()
-                    .filter(|petal| petal.height <= 0.0)
-                    .map(|petal| {
-                        let alpha = (petal.rest / 1.5).clamp(0.0, 1.0);
-                        petal_instance(petal).tint(Rgba::new(1.0, 1.0, 1.0, alpha))
-                    }),
-            )
-            .draw(context.draw, context.graphics);
-        for (index, (position, variant)) in Self::trees().enumerate() {
-            if self.visible(position, CANOPY_SIZE) {
-                Lit::forward(
-                    sprite(
-                        canopy(variant),
-                        position,
-                        CANOPY_SIZE.into(),
-                        index as f32 * 1.3,
-                    )
-                    .tint(Rgba::new(
-                        1.0,
-                        1.0,
-                        1.0,
-                        self.fade(position, 60.0, 170.0),
-                    )),
-                    LightMaterial::default(),
-                )
-                .draw(context.draw, context.graphics);
+        for (node, opacity) in &nodes.shadows {
+            if let Some(mut caster) = scene.attr_mut::<ShadowCaster>(*node) {
+                caster.material.opacity = opacity * strength;
             }
         }
-        petals
-            .object()
-            .emit(
-                self.petals
-                    .iter()
-                    .filter(|petal| petal.height > 0.0)
-                    .map(petal_instance),
-            )
-            .draw(context.draw, context.graphics);
-    }
-
-    fn fade(&self, position: Vec2<f32>, near: f32, far: f32) -> f32 {
-        smoothstep(near, far, position.distance(self.player)).max(0.2)
+        for crown in &nodes.crowns {
+            let alpha = smoothstep(60.0, 170.0, crown.position.distance(player)).max(0.2);
+            if let Some(mut node) = scene.node_mut(crown.node)
+                && let Primitive::Sprite(sprite) = &mut node.primitive
+            {
+                sprite.tint = Rgba::new(1.0, 1.0, 1.0, alpha);
+            }
+        }
     }
 }
 
@@ -869,13 +995,17 @@ impl GameState for State {
     }
 
     fn update(&mut self, context: GameContext, delta_time: f32) {
-        self.time += delta_time;
+        if !self.frozen_time {
+            self.time += delta_time;
+        }
         let speed = if self.fast_forward.get().is_down() {
             FAST_FORWARD
         } else {
             1.0
         };
-        self.day_time = (self.day_time + delta_time * speed) % DAY_LENGTH;
+        if !self.frozen_day {
+            self.day_time = (self.day_time + delta_time * speed) % DAY_LENGTH;
+        }
         if self.toggle_style.get().is_pressed() {
             self.anime = !self.anime;
             self.lighting.set_style(if self.anime {
@@ -913,27 +1043,23 @@ impl GameState for State {
                 break;
             }
         }
-        self.update_petals(delta_time);
+        if !self.frozen_time {
+            self.update_petals(delta_time);
+        }
         self.update_sky();
+        self.animate();
         context.graphics.state.main_camera.transform.position = self.camera().into();
     }
 
-    fn draw(&mut self, mut context: GameContext) {
-        self.lighting.begin(context.draw, context.graphics);
-        self.draw_ground(&mut context);
-        self.draw_river(&mut context);
-        self.draw_picnic(&mut context);
-        self.draw_trunks(&mut context);
-        self.draw_lanterns(&mut context);
-        self.draw_player(&mut context);
-        self.lighting.begin_shadows(context.draw, context.graphics);
-        self.draw_shadows(&mut context);
-        self.lighting.end_shadows(context.draw, context.graphics);
-        self.lighting.resolve(context.draw, context.graphics);
-        self.draw_water(&mut context);
-        self.draw_overhead(&mut context);
-        self.lighting.end(context.draw, context.graphics);
+    fn draw(&mut self, context: GameContext) {
+        self.scene
+            .render(&mut self.lighting, context.draw, context.graphics);
     }
+}
+
+/// A style uniform reaches the shader as it is, so the CPU decodes an sRGB color first.
+fn srgb_uniform(r: f32, g: f32, b: f32) -> GlowUniformValue {
+    GlowUniformValue::F3(srgb_to_linear(Rgb::new(r, g, b)).into_array())
 }
 
 fn anime_style() -> LightingStyle {
@@ -987,14 +1113,6 @@ fn facing(offset: Vec2<f32>) -> f32 {
     (-offset.y).atan2(-offset.x) + FRAC_PI_2
 }
 
-/// The column copies stay closer than a third of the caster size along the shadow,
-/// so a long evening shadow does not break into separate dots.
-fn column(height: f32, size: f32, shadow_length: f32) -> impl Iterator<Item = f32> {
-    let step = size * 0.3 / shadow_length.max(0.1);
-    let count = (height / step).ceil().max(1.0) as i32;
-    (0..=count).map(move |index| height * index as f32 / count as f32)
-}
-
 fn wrap(value: f32, half: f32) -> f32 {
     (value + half).rem_euclid(half * 2.0) - half
 }
@@ -1017,6 +1135,16 @@ fn sprite(name: &str, position: Vec2<f32>, size: Vec2<f32>, rotation: f32) -> Sp
 
 fn mix(from: Rgb<f32>, to: Rgb<f32>, factor: f32) -> Rgb<f32> {
     from * (1.0 - factor) + to * factor
+}
+
+/// A lantern outside the view fades out at night.
+/// The scene lights the whole occupancy rect, so without the fade the off-view lanterns
+/// raise the night floor, the eye adaptation lowers the exposure and the halos in the view get small.
+/// The fade starts at the view edge, so a lantern in the view always glows fully.
+fn view_fade(position: Vec2<f32>, camera: Vec2<f32>) -> f32 {
+    let offset = (position - camera).map(f32::abs);
+    let outside = (offset.x - VIEW_REACH).max(offset.y - VIEW_HEIGHT * 0.5) - LANTERN_SIZE;
+    1.0 - smoothstep(0.0, LANTERN_FADE, outside)
 }
 
 fn smoothstep(from: f32, to: f32, value: f32) -> f32 {

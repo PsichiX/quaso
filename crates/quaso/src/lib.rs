@@ -85,6 +85,7 @@ pub mod interactible;
 pub mod lighting;
 pub mod map;
 pub mod multiplayer;
+pub mod scene;
 pub mod scripting;
 pub mod tag;
 pub mod transformed;

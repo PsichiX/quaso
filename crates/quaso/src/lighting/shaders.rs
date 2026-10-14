@@ -1,5 +1,5 @@
 pub fn gbuffer_fragment() -> String {
-    GBUFFER_FRAGMENT
+    with_colors(GBUFFER_FRAGMENT)
         .replace("VERTEX_EMISSION_FUNCTIONS", VERTEX_EMISSION_FUNCTIONS)
         .replace(
             "ALBEDO",
@@ -8,23 +8,65 @@ pub fn gbuffer_fragment() -> String {
 }
 
 pub fn composite_fragment(shade: Option<&str>) -> String {
-    with_shade(&with_shadow_mask(COMPOSITE_FRAGMENT), shade)
-}
-
-pub fn forward_fragment(shade: Option<&str>) -> String {
     with_shade(
-        &FORWARD_FRAGMENT.replace("VERTEX_EMISSION_FUNCTIONS", VERTEX_EMISSION_FUNCTIONS),
+        &with_shadow_mask(&with_colors(COMPOSITE_FRAGMENT))
+            .replace("OPEN_LIGHT_FUNCTION", OPEN_LIGHT_FUNCTION),
         shade,
     )
 }
 
+pub fn forward_fragment(shade: Option<&str>) -> String {
+    with_shade(
+        &with_colors(FORWARD_FRAGMENT)
+            .replace("VERTEX_EMISSION_FUNCTIONS", VERTEX_EMISSION_FUNCTIONS)
+            .replace("OPEN_LIGHT_FUNCTION", OPEN_LIGHT_FUNCTION),
+        shade,
+    )
+}
+
+/// The open light mips skip the occluder texels. The blur grows from `lod` until it reaches
+/// enough open space, so a surface above an occluder, such as a canopy above a trunk, takes the
+/// light around the occluder without a seam at its edge.
+const OPEN_LIGHT_FUNCTION: &str = r#"const int OPEN_STEPS = 5;
+const float MIN_OPEN = 0.25;
+
+vec3 open_light_at(vec3 uv, float lod) {
+    vec4 open = textureLod(u_open_light, uv, lod);
+    for (int step = 0; step < OPEN_STEPS && open.a < MIN_OPEN; ++step) {
+        lod += 1.0;
+        open = textureLod(u_open_light, uv, lod);
+    }
+    return open.a > 1.0e-3 ? open.rgb / open.a : textureLod(u_light_map, uv, lod).rgb;
+}"#;
+
 pub fn tonemap_fragment(grade: Option<&str>) -> String {
-    TONEMAP_FRAGMENT.replace("GRADE_FUNCTION", grade.unwrap_or(DEFAULT_GRADE))
+    with_colors(TONEMAP_FRAGMENT).replace("GRADE_FUNCTION", grade.unwrap_or(DEFAULT_GRADE))
 }
 
 pub fn pass_fragment(pass: &str) -> String {
-    with_shadow_mask(&PASS_FRAGMENT.replace("PASS_FUNCTION", pass))
+    with_shadow_mask(&with_colors(PASS_FRAGMENT).replace("PASS_FUNCTION", pass))
 }
+
+fn with_colors(source: &str) -> String {
+    source.replace("COLOR_FUNCTIONS", COLOR_FUNCTIONS)
+}
+
+/// A light color is an sRGB hue times a linear intensity in the brightest channel.
+/// `light_decode` decodes the hue and keeps the intensity, the same as `light_to_linear`.
+const COLOR_FUNCTIONS: &str = r#"vec3 srgb_decode(vec3 color) {
+    vec3 c = max(color, vec3(0.0));
+    return mix(c / 12.92, pow((c + 0.055) / 1.055, vec3(2.4)), step(vec3(0.04045), c));
+}
+
+vec3 srgb_encode(vec3 color) {
+    vec3 c = max(color, vec3(0.0));
+    return mix(c * 12.92, 1.055 * pow(c, vec3(1.0 / 2.4)) - 0.055, step(vec3(0.0031308), c));
+}
+
+vec3 light_decode(vec3 color) {
+    float intensity = max(max(color.r, color.g), color.b);
+    return intensity > 0.0 ? srgb_decode(color / intensity) * intensity : vec3(0.0);
+}"#;
 
 fn with_shade(source: &str, shade: Option<&str>) -> String {
     source.replace(
@@ -94,10 +136,18 @@ uniform sampler2DArray u_shadow;
 uniform vec2 u_target_size;
 uniform vec2 u_scene_size;
 uniform vec4 u_view_rect;
+uniform vec4 u_light_rect;
+
+vec2 light_uv(vec2 scene_uv) {
+    return u_light_rect.z > 0.0 ? u_light_rect.xy + scene_uv * u_light_rect.zw : scene_uv;
+}
 uniform float u_texel_world;
+uniform int u_cover;
 uniform float u_shadow_softness;
 uniform vec3 u_shadow_light;
 uniform vec3 u_shadow_open;
+
+COLOR_FUNCTIONS
 
 SHADOW_MASK_FUNCTION
 
@@ -107,7 +157,7 @@ vec4 source_color(vec2 screen_uv) {
 
 vec4 scene_albedo(vec2 scene_uv) {
     vec4 albedo = texture(u_albedo, vec3(scene_uv, 0.0));
-    return albedo.a > 0.0 ? vec4(albedo.rgb / albedo.a, albedo.a) : vec4(0.0);
+    return albedo.a > 0.0 ? vec4(srgb_decode(albedo.rgb / albedo.a), albedo.a) : vec4(0.0);
 }
 
 vec3 scene_normal(vec2 scene_uv) {
@@ -124,8 +174,8 @@ vec3 scene_emission(vec2 scene_uv) {
 }
 
 float scene_opacity(vec2 scene_uv) {
-    vec3 sigma = texture(u_absorption, vec3(scene_uv, 0.0)).rgb;
-    return 1.0 - exp(-dot(sigma, vec3(1.0 / 3.0)) * u_texel_world);
+    vec3 absorption = texture(u_absorption, vec3(scene_uv, 0.0)).rgb;
+    return u_cover != 0 ? absorption.r : 1.0 - exp(-dot(absorption, vec3(1.0 / 3.0)) * u_texel_world);
 }
 
 vec2 scene_pixel() {
@@ -133,7 +183,7 @@ vec2 scene_pixel() {
 }
 
 vec3 scene_light(vec2 scene_uv) {
-    return texture(u_light_map, vec3(scene_uv, 0.0)).rgb;
+    return texture(u_light_map, vec3(light_uv(scene_uv), 0.0)).rgb;
 }
 
 PASS_FUNCTION
@@ -146,7 +196,7 @@ void main() {
 "#;
 
 pub fn water_fragment(water: Option<&str>) -> String {
-    with_shadow_mask(WATER_FRAGMENT).replace(
+    with_shadow_mask(&with_colors(WATER_FRAGMENT)).replace(
         "WATER_FUNCTION",
         &format!(
             "{WATER_SURFACE_STRUCT}
@@ -173,11 +223,11 @@ const VERTEX_EMISSION_FUNCTIONS: &str = r#"vec4 albedo_tint() {
 }
 
 vec3 emission_tint() {
-    return (u_maps & 16) != 0 ? v_color.rgb : vec3(1.0);
+    return (u_maps & 16) != 0 ? light_decode(v_color.rgb) : vec3(1.0);
 }"#;
 
 pub fn gbuffer_text_fragment() -> String {
-    GBUFFER_FRAGMENT
+    with_colors(GBUFFER_FRAGMENT)
         .replace("VERTEX_EMISSION_FUNCTIONS", VERTEX_EMISSION_FUNCTIONS)
         .replace(
             "ALBEDO",
@@ -185,6 +235,9 @@ pub fn gbuffer_text_fragment() -> String {
         )
 }
 
+/// With `u_cover` the emission and the absorption cover the layers below, as the albedo and the
+/// normal do, and the absorption holds the opacity. The occupancy pass and a scene without an
+/// occupancy canvas feed the light field, so they keep the additive absorption.
 const GBUFFER_FRAGMENT: &str = r#"#version 300 es
 precision highp float;
 precision highp int;
@@ -203,6 +256,10 @@ uniform int u_maps;
 uniform vec3 u_emission;
 uniform vec3 u_absorption;
 uniform float u_surface_mode;
+uniform int u_cover;
+uniform float u_texel_world;
+
+COLOR_FUNCTIONS
 
 VERTEX_EMISSION_FUNCTIONS
 
@@ -238,8 +295,14 @@ void main() {
         normal = rotate_normal(texture(u_normal_map, v_uv).xyz * 2.0 - 1.0, uv_dx, uv_dy);
     }
     o_albedo = vec4(albedo.rgb * coverage, coverage);
-    o_emission = vec4(emission * coverage, 0.0);
-    o_absorption = vec4(absorption * coverage, 0.0);
+    if (u_cover != 0) {
+        float opacity = 1.0 - exp(-dot(absorption, vec3(1.0 / 3.0)) * u_texel_world);
+        o_emission = vec4(emission * coverage, coverage);
+        o_absorption = vec4(vec3(opacity) * coverage, coverage);
+    } else {
+        o_emission = vec4(emission * coverage, 0.0);
+        o_absorption = vec4(absorption * coverage, 0.0);
+    }
     o_normal = vec4(vec3(normal.xy * 0.5 + 0.5, u_surface_mode) * coverage, coverage);
 }
 "#;
@@ -253,18 +316,29 @@ uniform sampler2DArray u_opacity;
 uniform sampler2DArray u_emission;
 uniform sampler2DArray u_upper;
 uniform sampler2DArray u_seeds;
-uniform int u_cascade;
-uniform int u_cascade_count;
+uniform int u_side;
 uniform vec2 u_size;
+uniform vec2 u_origin;
+uniform float u_spacing;
+uniform vec2 u_interval;
+uniform int u_has_upper;
+uniform vec2 u_upper_size;
+uniform vec2 u_upper_origin;
+uniform float u_upper_spacing;
 uniform vec2 u_scene_size;
-uniform float u_base_interval;
-uniform float u_probe_spacing;
-uniform float u_gbuffer_scale;
+uniform float u_medium_scale;
 uniform vec3 u_sky;
 uniform vec3 u_sun;
 uniform vec2 u_sun_direction;
 uniform float u_sun_sharpness;
 uniform float u_light_height;
+uniform float u_sky_distance;
+
+// The Samsung Xclipse GPU makes NaN in the light passes, which no desktop GPU does.
+// The cascade merge multiplies zero weights too, so one NaN spreads into big black blocks.
+vec4 finite_or_zero(vec4 value) {
+    return mix(vec4(0.0), value, lessThanEqual(abs(value), vec4(65504.0)));
+}
 
 const float TAU = 6.283185307179586;
 const float OPAQUE = 0.001;
@@ -277,6 +351,17 @@ vec3 scene(sampler2DArray layer, vec2 position, float lod) {
     return textureLod(layer, vec3(uv, 0.0), lod).rgb;
 }
 
+vec4 scene_medium(vec2 position, float lod) {
+    vec2 uv = position / u_scene_size;
+    if (any(lessThan(uv, vec2(0.0))) || any(greaterThan(uv, vec2(1.0)))) {
+        return vec4(0.0);
+    }
+    return textureLod(u_opacity, vec3(uv, 0.0), lod);
+}
+
+/// The jump flood fields find seeds only up to this distance, so no seed means at least this far.
+const float FIELD_REACH = 32.0;
+
 float scene_distance(vec2 position) {
     vec2 outside = max(max(-position, position - u_scene_size), vec2(0.0));
     if (any(greaterThan(outside, vec2(0.0)))) {
@@ -285,9 +370,9 @@ float scene_distance(vec2 position) {
     ivec2 texel = clamp(ivec2(position), ivec2(0), ivec2(u_scene_size) - 1);
     vec4 seed = texelFetch(u_seeds, ivec3(texel, 0), 0);
     if (seed.x < 0.0) {
-        return 1.0e20;
+        return FIELD_REACH;
     }
-    return distance(seed.xy, position);
+    return min(distance(seed.xy, position), FIELD_REACH);
 }
 
 const float SKY_ELEVATION = 1.0;
@@ -296,15 +381,35 @@ float luminance(vec3 color) {
     return dot(color, vec3(0.2126, 0.7152, 0.0722));
 }
 
+/// The part of a ray step that sees the emitters. A mip texel only gives the area fraction of
+/// solid texels. One compact solid with that area fraction covers its square root of the
+/// footprint width. The mean opacity alone treats a solid as one texel thick, so the light of
+/// a small lamp then depends on the texel size. Only the emission uses this model. A wall is
+/// long, not compact, so the square root lets light through thin walls at coarse levels.
+vec3 emission_transmittance(vec4 medium, float step_length, float lod) {
+    vec3 opacity = min(medium.rgb, vec3(1.0));
+    float solid = clamp(medium.a, 0.0, 1.0);
+    vec3 thin = clamp((opacity - solid) / max(1.0 - solid, 1.0e-4), vec3(0.0), vec3(1.0));
+    float footprint = exp2(lod) / u_medium_scale;
+    float solid_open = pow(max(1.0 - sqrt(solid), 0.0), step_length / max(footprint, 1.0e-4));
+    return solid_open * pow(1.0 - thin, vec3(step_length));
+}
+
+/// `sky_transmittance` is the transmittance where the ray passes `sky_at`, measured from `from`.
 /// `elevation` sums `luminance * tan(elevation)` of the gathered light.
 /// A light found at distance d from the probe is `u_light_height / d` steep.
+/// The skip moves in whole steps and stops one step early. A skip to the exact free distance
+/// puts each emitter at the edge of a step footprint, and the mip sample then gives it too
+/// little weight.
 void march(
     vec2 origin,
     vec2 from,
     vec2 to,
     float step_size,
+    float sky_at,
     out vec3 radiance,
     out vec3 transmittance,
+    out vec3 sky_transmittance,
     out float elevation
 ) {
     vec2 delta = to - from;
@@ -313,38 +418,61 @@ void march(
     radiance = vec3(0.0);
     transmittance = vec3(1.0);
     elevation = 0.0;
-    float lod = max(log2(step_size * u_gbuffer_scale), 0.0);
+    sky_transmittance = vec3(-1.0);
+    float lod = max(log2(step_size * u_medium_scale), 0.0);
     float t = 0.0;
     while (t < length_total) {
-        float skip = scene_distance(from + direction * t) - 1.0;
-        if (skip >= 1.0) {
-            t += skip;
+        if (sky_transmittance.r < 0.0 && t >= sky_at) {
+            sky_transmittance = transmittance;
+        }
+        float skipped_steps = floor((scene_distance(from + direction * t) - 1.0) / step_size) - 1.0;
+        if (skipped_steps >= 1.0) {
+            t += skipped_steps * step_size;
             continue;
         }
         float step_length = min(step_size, length_total - t);
         vec2 position = from + direction * (t + step_length * 0.5);
         t += step_length;
-        vec3 opacity = min(scene(u_opacity, position, lod), vec3(1.0));
+        vec4 medium = scene_medium(position, lod);
+        vec3 opacity = min(medium.rgb, vec3(1.0));
         vec3 emission = scene(u_emission, position, lod);
         float mean_opacity = dot(opacity, vec3(1.0 / 3.0));
-        float mean_step_opacity = 1.0 - pow(1.0 - mean_opacity, step_length);
+        vec3 step_open = pow(max(1.0 - opacity, vec3(0.0)), vec3(step_length));
+        vec3 emission_open = emission_transmittance(medium, step_length, lod);
+        float mean_step_opacity = 1.0 - dot(emission_open, vec3(1.0 / 3.0));
         float emission_scale = mean_opacity > 1.0e-4
             ? mean_step_opacity / mean_opacity
             : step_length;
         vec3 gathered = transmittance * emission * emission_scale;
         radiance += gathered;
         elevation += luminance(gathered) * u_light_height / max(distance(position, origin), 1.0);
-        transmittance *= pow(1.0 - opacity, vec3(step_length));
+        transmittance *= step_open;
         if (max(transmittance.r, max(transmittance.g, transmittance.b)) < OPAQUE) {
             transmittance = vec3(0.0);
             break;
         }
     }
+    if (sky_transmittance.r < 0.0) {
+        sky_transmittance = transmittance;
+    }
 }
 
+/// Every ray takes the sky light at `u_sky_distance` from the probe. The window ends past that
+/// distance around the view, so the sky light does not depend on where the window ends.
+/// Without that, rays that leave the window see a clear sky beside a dark window centre.
+vec3 sky_light(vec2 direction, vec3 sky_transmittance, inout float elevation) {
+    float sun_lobe = pow(max(dot(direction, u_sun_direction), 0.0), u_sun_sharpness);
+    vec3 sky = sky_transmittance * (u_sky + u_sun * sun_lobe);
+    elevation += luminance(sky) * SKY_ELEVATION;
+    return sky;
+}
+
+/// Positions are in scene texels of the region grid. A cascade of the fine view window has
+/// its own origin and a spacing below one scene texel. The interval ends where the interval
+/// of the upper cascade starts, so the upper cascade can sit on a different grid.
 void main() {
     ivec2 texel = ivec2(gl_FragCoord.xy);
-    int side = 1 << (u_cascade + 1);
+    int side = u_side;
     ivec2 tile_size = ivec2(u_size) / side;
     ivec2 tile = texel / tile_size;
     ivec2 probe = texel - tile * tile_size;
@@ -352,29 +480,30 @@ void main() {
     int direction_index = tile.y * side + tile.x;
     float angle = (float(direction_index) + 0.5) * TAU / float(direction_count);
     vec2 direction = vec2(cos(angle), sin(angle));
-    float spacing = u_probe_spacing * float(side / 2);
-    vec2 origin = (vec2(probe) + 0.5) * spacing;
-    float growth = pow(4.0, float(u_cascade));
-    float start = u_base_interval * (growth - 1.0) / 3.0;
-    float end = u_base_interval * (growth * 4.0 - 1.0) / 3.0;
+    float spacing = u_spacing;
+    vec2 origin = u_origin + (vec2(probe) + 0.5) * spacing;
+    float start = u_interval.x;
+    float end = u_interval.y;
     vec3 radiance;
     vec3 transmittance;
+    vec3 sky_transmittance;
     float elevation;
+    float sky_at = u_sky_distance - start;
+    bool has_sky = sky_at >= 0.0 && (u_has_upper == 0 || u_sky_distance < end);
 
-    if (u_cascade + 1 >= u_cascade_count) {
-        march(origin, origin + direction * start, origin + direction * end, spacing, radiance, transmittance, elevation);
-        float sun_lobe = pow(max(dot(direction, u_sun_direction), 0.0), u_sun_sharpness);
-        vec3 sky = transmittance * (u_sky + u_sun * sun_lobe);
-        elevation += luminance(sky) * SKY_ELEVATION;
-        radiance += sky;
-        o_color = vec4(radiance, elevation / max(luminance(radiance), 1.0e-6));
+    if (u_has_upper == 0) {
+        march(origin, origin + direction * start, origin + direction * end, spacing, sky_at, radiance, transmittance, sky_transmittance, elevation);
+        if (has_sky) {
+            radiance += sky_light(direction, sky_transmittance, elevation);
+        }
+        o_color = finite_or_zero(vec4(radiance, elevation / max(luminance(radiance), 1.0e-6)));
         return;
     }
 
     int upper_side = side * 2;
-    float upper_spacing = spacing * 2.0;
-    ivec2 upper_tile_size = ivec2(u_size) / upper_side;
-    vec2 upper_coords = origin / upper_spacing - 0.5;
+    float upper_spacing = u_upper_spacing;
+    ivec2 upper_tile_size = ivec2(u_upper_size) / upper_side;
+    vec2 upper_coords = (origin - u_upper_origin) / upper_spacing - 0.5;
     vec2 upper_base = floor(upper_coords);
     vec2 weights = upper_coords - upper_base;
     vec3 result = vec3(0.0);
@@ -382,8 +511,11 @@ void main() {
     for (int n = 0; n < 4; ++n) {
         ivec2 offset = ivec2(n % 2, n / 2);
         ivec2 upper_probe = clamp(ivec2(upper_base) + offset, ivec2(0), upper_tile_size - 1);
-        vec2 upper_origin = (vec2(upper_probe) + 0.5) * upper_spacing;
-        march(origin, origin + direction * start, upper_origin + direction * end, spacing, radiance, transmittance, elevation);
+        vec2 upper_origin = u_upper_origin + (vec2(upper_probe) + 0.5) * upper_spacing;
+        march(origin, origin + direction * start, upper_origin + direction * end, spacing, sky_at, radiance, transmittance, sky_transmittance, elevation);
+        if (has_sky) {
+            radiance += sky_light(direction, sky_transmittance, elevation);
+        }
         vec3 upper = vec3(0.0);
         float upper_elevation = 0.0;
         for (int k = 0; k < 4; ++k) {
@@ -399,7 +531,7 @@ void main() {
         result += weight.x * weight.y * (radiance + far);
         result_elevation += weight.x * weight.y * (elevation + luminance(far) * upper_elevation);
     }
-    o_color = vec4(result, result_elevation / max(luminance(result), 1.0e-6));
+    o_color = finite_or_zero(vec4(result, result_elevation / max(luminance(result), 1.0e-6)));
 }
 "#;
 
@@ -412,13 +544,17 @@ layout(location = 1) out vec4 o_emission;
 uniform sampler2DArray u_emission;
 uniform sampler2DArray u_absorption;
 uniform float u_texel_world;
+uniform vec2 u_medium_size;
+
+const float SOLID_OPACITY = 0.98;
 
 void main() {
-    ivec3 texel = ivec3(gl_FragCoord.xy, 0);
-    vec3 sigma = texelFetch(u_absorption, texel, 0).rgb;
-    vec3 emission = texelFetch(u_emission, texel, 0).rgb;
+    vec3 uv = vec3(gl_FragCoord.xy / u_medium_size, 0.0);
+    vec3 sigma = texture(u_absorption, uv).rgb;
+    vec3 emission = texture(u_emission, uv).rgb;
     vec3 opacity = 1.0 - exp(-sigma * u_texel_world);
-    o_opacity = vec4(opacity, 1.0);
+    float solid = dot(opacity, vec3(1.0 / 3.0)) >= SOLID_OPACITY ? 1.0 : 0.0;
+    o_opacity = vec4(opacity, solid);
     o_emission = vec4(emission * dot(opacity, vec3(1.0 / 3.0)), 1.0);
 }
 "#;
@@ -444,6 +580,39 @@ void main() {
     } else {
         o_color = vec4(-1.0);
     }
+}
+"#;
+
+/// A texel takes the seed of the texel `u_shift` back, moved by `u_shift`.
+pub const FIELD_SHIFT_FRAGMENT: &str = r#"#version 300 es
+precision highp float;
+precision highp int;
+precision highp sampler2DArray;
+out vec4 o_color;
+uniform sampler2DArray u_seeds;
+uniform ivec2 u_shift;
+uniform vec2 u_scene_size;
+
+void main() {
+    ivec2 source = ivec2(gl_FragCoord.xy) - u_shift;
+    if (any(lessThan(source, ivec2(0))) || any(greaterThanEqual(source, ivec2(u_scene_size)))) {
+        o_color = vec4(-1.0);
+        return;
+    }
+    vec4 seed = texelFetch(u_seeds, ivec3(source, 0), 0);
+    o_color = seed.x < 0.0 ? seed : seed + vec4(vec2(u_shift), 0.0, 0.0);
+}
+"#;
+
+pub const FIELD_COPY_FRAGMENT: &str = r#"#version 300 es
+precision highp float;
+precision highp int;
+precision highp sampler2DArray;
+out vec4 o_color;
+uniform sampler2DArray u_seeds;
+
+void main() {
+    o_color = texelFetch(u_seeds, ivec3(ivec2(gl_FragCoord.xy), 0), 0);
 }
 "#;
 
@@ -486,7 +655,8 @@ pub const LIGHT_MAP_FRAGMENT: &str = r#"#version 300 es
 precision highp float;
 precision highp int;
 precision highp sampler2DArray;
-out vec4 o_color;
+layout(location = 0) out vec4 o_color;
+layout(location = 1) out vec4 o_open;
 uniform sampler2DArray u_cascade;
 uniform sampler2DArray u_absorption;
 uniform sampler2DArray u_surface;
@@ -494,6 +664,31 @@ uniform vec2 u_size;
 uniform vec2 u_scene_size;
 uniform float u_probe_spacing;
 uniform float u_texel_world;
+uniform vec4 u_field_rect;
+uniform vec2 u_field_size;
+
+/// Light space is the grid of the light map and of cascade c0. The fields use the region grid.
+/// Without a fine view window the two are the same.
+vec2 to_field(vec2 position) {
+    return u_field_rect.x > 0.0 ? position * u_field_rect.xy + u_field_rect.zw : position;
+}
+
+vec2 from_field(vec2 position) {
+    return u_field_rect.x > 0.0 ? (position - u_field_rect.zw) / u_field_rect.xy : position;
+}
+
+vec4 field_fetch(sampler2DArray field, vec2 position) {
+    ivec2 texel = clamp(ivec2(to_field(position)), ivec2(0), ivec2(u_field_size) - 1);
+    vec4 value = texelFetch(field, ivec3(texel, 0), 0);
+    if (value.x >= 0.0) {
+        value.xy = from_field(value.xy);
+    }
+    return value;
+}
+
+vec4 finite_or_zero(vec4 value) {
+    return mix(vec4(0.0), value, lessThanEqual(abs(value), vec4(65504.0)));
+}
 
 vec3 light_at(vec2 scene_position) {
     ivec2 tile_size = ivec2(u_size) / 2;
@@ -509,20 +704,23 @@ vec3 light_at(vec2 scene_position) {
 
 /// Inside an opaque object the light is the light just outside its nearest edge.
 /// Forward sprites drawn over the object then match its surroundings, not a black hole.
+/// The open target holds the light weighted by the open part of the texel, so its mips
+/// divided by their alpha give the light of the open space around an object.
 void main() {
     vec2 scene_position = gl_FragCoord.xy;
     vec3 light = light_at(scene_position);
-    vec3 sigma = texture(u_absorption, vec3(scene_position / u_scene_size, 0.0)).rgb;
+    vec3 sigma = texture(u_absorption, vec3(to_field(scene_position) / u_field_size, 0.0)).rgb;
     float opacity = 1.0 - exp(-dot(sigma, vec3(1.0 / 3.0)) * u_texel_world);
-    ivec2 scene_texel = clamp(ivec2(scene_position), ivec2(0), ivec2(u_scene_size) - 1);
-    vec4 surface = texelFetch(u_surface, ivec3(scene_texel, 0), 0);
+    float open = 1.0 - opacity;
+    o_open = finite_or_zero(vec4(light * open, open));
+    vec4 surface = field_fetch(u_surface, scene_position);
     if (opacity > 0.0 && surface.x >= 0.0) {
         vec2 outward = surface.xy - scene_position;
         float outward_length = length(outward);
         vec2 edge = outward_length > 0.0 ? surface.xy + outward / outward_length : surface.xy;
         light = mix(light, light_at(edge), opacity);
     }
-    o_color = vec4(light, 1.0);
+    o_color = finite_or_zero(vec4(light, 1.0));
 }
 "#;
 
@@ -540,6 +738,9 @@ uniform sampler2DArray u_cascade;
 uniform sampler2DArray u_surface;
 uniform sampler2DArray u_shadow;
 uniform sampler2DArray u_seeds;
+uniform sampler2DArray u_field_absorption;
+uniform sampler2DArray u_open_light;
+uniform int u_cover;
 uniform vec2 u_target_size;
 uniform vec2 u_scene_size;
 uniform vec2 u_cascade_size;
@@ -550,8 +751,40 @@ uniform float u_texel_world;
 uniform vec3 u_ambient;
 uniform float u_probe_spacing;
 uniform vec4 u_view_rect;
+uniform vec4 u_light_rect;
+
+vec2 light_uv(vec2 scene_uv) {
+    return u_light_rect.z > 0.0 ? u_light_rect.xy + scene_uv * u_light_rect.zw : scene_uv;
+}
 uniform int u_debug;
 uniform vec4 u_tile;
+uniform vec4 u_field_rect;
+uniform vec2 u_field_size;
+
+/// Light space is the grid of the light map and of cascade c0. The fields use the region grid.
+/// Without a fine view window the two are the same.
+vec2 to_field(vec2 position) {
+    return u_field_rect.x > 0.0 ? position * u_field_rect.xy + u_field_rect.zw : position;
+}
+
+vec2 from_field(vec2 position) {
+    return u_field_rect.x > 0.0 ? (position - u_field_rect.zw) / u_field_rect.xy : position;
+}
+
+vec4 field_fetch(sampler2DArray field, vec2 position) {
+    ivec2 texel = clamp(ivec2(to_field(position)), ivec2(0), ivec2(u_field_size) - 1);
+    vec4 value = texelFetch(field, ivec3(texel, 0), 0);
+    if (value.x >= 0.0) {
+        value.xy = from_field(value.xy);
+    }
+    return value;
+}
+
+vec4 finite_or_zero(vec4 value) {
+    return mix(vec4(0.0), value, lessThanEqual(abs(value), vec4(65504.0)));
+}
+
+COLOR_FUNCTIONS
 
 SHADOW_MASK_FUNCTION
 
@@ -584,8 +817,7 @@ const int SMOOTH_TAPS = 16;
 const int BOUNDARY_STEPS = 8;
 
 vec4 surface_at(vec2 scene_position) {
-    ivec2 scene_texel = clamp(ivec2(scene_position), ivec2(0), ivec2(u_scene_size) - 1);
-    return texelFetch(u_surface, ivec3(scene_texel, 0), 0);
+    return field_fetch(u_surface, scene_position);
 }
 
 vec3 surface_light_at(vec2 scene_position, vec3 normal) {
@@ -603,6 +835,32 @@ vec3 surface_light_at(vec2 scene_position, vec3 normal) {
 
 float luminance(vec3 color) {
     return dot(color, vec3(0.2126, 0.7152, 0.0722));
+}
+
+float surface_opacity(vec3 uv) {
+    vec3 absorption = texture(u_absorption, uv).rgb;
+    return u_cover != 0 ? absorption.r : 1.0 - exp(-dot(absorption, vec3(1.0 / 3.0)) * u_texel_world);
+}
+
+float field_opacity(vec2 scene_position) {
+    vec3 sigma = texture(u_field_absorption, vec3(to_field(scene_position) / u_field_size, 0.0)).rgb;
+    return 1.0 - exp(-dot(sigma, vec3(1.0 / 3.0)) * u_texel_world);
+}
+
+OPEN_LIGHT_FUNCTION
+
+/// The light for a surface above an occluder of the light field. The blur starts as wide as the
+/// edge distance. The normal shading is the ratio of the sharp reads just past the edge.
+vec3 open_light(vec2 scene_position, vec4 surface, vec3 normal) {
+    vec2 outward = surface.x >= 0.0 ? surface.xy - scene_position : vec2(0.0);
+    float edge_distance = length(outward);
+    vec2 edge = edge_distance > 0.0 ? surface.xy + outward / edge_distance : scene_position;
+    vec3 uv = vec3(scene_position / u_scene_size, 0.0);
+    vec3 blurred = open_light_at(uv, log2(max(edge_distance * 2.0, 1.0)));
+    float flat_light = luminance(directional_light(edge, vec3(0.0, 0.0, 1.0)));
+    float shaded_light = luminance(directional_light(edge, normal));
+    float shade = flat_light > 1.0e-6 ? clamp(shaded_light / flat_light, 0.0, 4.0) : 1.0;
+    return blurred * shade;
 }
 
 /// Steps from the pixel along the direction to the edge of the object, with the distance
@@ -628,6 +886,12 @@ vec3 boundary_light(vec2 scene_position, vec2 direction, vec3 normal) {
     float shaded_light = luminance(directional_light(position, normal));
     float shade = flat_light > 1.0e-6 ? clamp(shaded_light / flat_light, 0.0, 4.0) : 1.0;
     return blurred * shade;
+}
+
+/// The tonemap encodes every view to sRGB. The decode here cancels that encode, so a debug view
+/// shows the raw values.
+vec4 debug_color(vec3 value, float alpha) {
+    return vec4(srgb_decode(value), alpha);
 }
 
 /// An overview tile covers the whole target and keeps only the pixels in `u_tile`.
@@ -658,14 +922,18 @@ void main() {
         normal = normalize(vec3(normal_xy, sqrt(max(1.0 - dot(normal_xy, normal_xy), 0.0))));
         surface_mode = normal_sample.b / normal_sample.a;
     }
-    vec2 scene_position = scene_uv * u_scene_size;
+    vec2 scene_position = light_uv(scene_uv) * u_scene_size;
     vec3 light = directional_light(scene_position, normal);
-    vec3 sigma = texture(u_absorption, uv).rgb;
-    float opacity = 1.0 - exp(-dot(sigma, vec3(1.0 / 3.0)) * u_texel_world);
+    float opacity = surface_opacity(uv);
     vec4 surface = surface_at(scene_position);
+    int mode = int(floor(surface_mode * 8.0 + 0.5));
+    float occluded = (mode & 4) != 0 ? field_opacity(scene_position) : 0.0;
+    if (occluded > 0.0 && opacity < 1.0) {
+        light = mix(light, open_light(scene_position, surface, normal), occluded);
+    }
     if (opacity > 0.0 && surface.x >= 0.0) {
         vec3 surface_light = vec3(0.0);
-        if ((int(floor(surface_mode * 4.0 + 0.5)) & 2) != 0) {
+        if ((mode & 2) != 0) {
             for (int k = 0; k < SMOOTH_TAPS; ++k) {
                 float angle = (float(k) + 0.5) * TAU / float(SMOOTH_TAPS);
                 surface_light += boundary_light(scene_position, vec2(cos(angle), sin(angle)), normal);
@@ -680,32 +948,31 @@ void main() {
     light = shadowed(light, shadow);
     light += u_ambient;
     if (u_debug == 1) {
-        o_color = vec4(albedo.rgb, 1.0);
+        o_color = debug_color(albedo.rgb, 1.0);
     } else if (u_debug == 2) {
-        o_color = vec4(emission, 1.0);
+        o_color = debug_color(emission, 1.0);
     } else if (u_debug == 3) {
-        vec3 sigma = texture(u_absorption, uv).rgb;
-        o_color = vec4(sigma / (sigma + 1.0), 1.0);
+        vec3 absorption = texture(u_absorption, uv).rgb;
+        o_color = debug_color(u_cover != 0 ? absorption : absorption / (absorption + 1.0), 1.0);
     } else if (u_debug == 4) {
-        o_color = vec4(normal * 0.5 + 0.5, 1.0);
+        o_color = debug_color(normal * 0.5 + 0.5, 1.0);
     } else if (u_debug == 5) {
-        o_color = vec4(texture(u_light_map, uv).rgb, 1.0);
+        o_color = debug_color(texture(u_light_map, vec3(light_uv(scene_uv), 0.0)).rgb, 1.0);
     } else if (u_debug == 6) {
-        o_color = vec4(vec3(1.0 - shadow), 1.0);
+        o_color = debug_color(vec3(1.0 - shadow), 1.0);
     } else if (u_debug == 7) {
-        o_color = vec4(tile ? light / (light + 1.0) : light, 1.0);
+        o_color = debug_color(tile ? light / (light + 1.0) : light, 1.0);
     } else if (u_debug == 8) {
-        ivec2 texel = clamp(ivec2(scene_position), ivec2(0), ivec2(u_scene_size) - 1);
-        vec4 seed = texelFetch(u_seeds, ivec3(texel, 0), 0);
+        vec4 seed = field_fetch(u_seeds, scene_position);
         float occluder_distance = seed.x < 0.0 ? 1.0e6 : distance(seed.xy, scene_position);
         float band = fract(occluder_distance / 8.0) < 0.5 ? 1.0 : 0.85;
-        o_color = vec4(vec3(1.0 - exp(-occluder_distance / 32.0)) * band, 1.0);
+        o_color = debug_color(vec3(1.0 - exp(-occluder_distance / 32.0)) * band, 1.0);
     } else if (u_debug == 9) {
-        o_color = vec4(albedo.rgb * 0.25, 1.0);
+        o_color = debug_color(albedo.rgb * 0.25, 1.0);
     } else {
-        vec3 straight = albedo.a > 0.0 ? albedo.rgb / albedo.a : vec3(0.0);
+        vec3 straight = albedo.a > 0.0 ? srgb_decode(albedo.rgb / albedo.a) : vec3(0.0);
         Surface surface = Surface(straight, normal, light, u_ambient, shadow, scene_uv, view_uv);
-        o_color = vec4(shade(surface) * albedo.a + emission, albedo.a);
+        o_color = finite_or_zero(vec4(shade(surface) * albedo.a + emission, albedo.a));
     }
 }
 "#;
@@ -738,6 +1005,8 @@ vec3 aces(vec3 color) {
         1.0
     );
 }
+
+COLOR_FUNCTIONS
 
 GRADE_FUNCTION
 
@@ -772,7 +1041,7 @@ void main() {
     } else {
         color = clamp(hdr.rgb, 0.0, 1.0);
     }
-    o_color = vec4(color, alpha);
+    o_color = vec4(srgb_encode(color), alpha);
 }
 "#;
 
@@ -914,15 +1183,23 @@ out vec4 o_color;
 uniform sampler2DArray u_image;
 uniform sampler2DArray u_emission_map;
 uniform sampler2DArray u_light_map;
+uniform sampler2DArray u_open_light;
 uniform int u_maps;
 uniform vec3 u_emission;
 uniform vec2 u_target_size;
 uniform vec4 u_view_rect;
+uniform vec4 u_light_rect;
+
+vec2 light_uv(vec2 scene_uv) {
+    return u_light_rect.z > 0.0 ? u_light_rect.xy + scene_uv * u_light_rect.zw : scene_uv;
+}
 uniform vec3 u_ambient;
 uniform int u_debug;
 
+COLOR_FUNCTIONS
 VERTEX_EMISSION_FUNCTIONS
 SHADE_FUNCTION
+OPEN_LIGHT_FUNCTION
 
 void main() {
     if (u_debug != 0) {
@@ -934,9 +1211,9 @@ void main() {
         emission *= texture(u_emission_map, v_uv).rgb;
     }
     vec2 scene_uv = u_view_rect.xy + gl_FragCoord.xy / u_target_size * u_view_rect.zw;
-    vec3 light = texture(u_light_map, vec3(scene_uv, 0.0)).rgb + u_ambient;
+    vec3 light = open_light_at(vec3(light_uv(scene_uv), 0.0), 0.0) + u_ambient;
     vec2 screen_uv = gl_FragCoord.xy / u_target_size;
-    Surface surface = Surface(albedo.rgb, vec3(0.0, 0.0, 1.0), light, u_ambient, 0.0, scene_uv, screen_uv);
+    Surface surface = Surface(srgb_decode(albedo.rgb), vec3(0.0, 0.0, 1.0), light, u_ambient, 0.0, scene_uv, screen_uv);
     o_color = vec4(shade(surface) + emission, albedo.a);
 }
 "#;
@@ -1001,7 +1278,7 @@ float shadow_mask(vec2 uv) {
     vec2 wide = textureLod(u_shadow, vec3(uv, 0.0), 5.0).rg;
     float radius = wide.g / max(wide.r, 1.0e-3) * SHADOW_BLUR_PIXELS + u_shadow_softness;
     float lod = log2(max(radius / 3.0, 1.0));
-    vec2 texel = 1.0 / u_scene_size;
+    vec2 texel = 1.0 / vec2(textureSize(u_shadow, 0).xy);
     float sum = textureLod(u_shadow, vec3(uv, 0.0), lod).r;
     for (int index = 0; index < SHADOW_TAPS; ++index) {
         float along = sqrt((float(index) + 0.5) / float(SHADOW_TAPS));
@@ -1031,18 +1308,24 @@ uniform vec2 u_size;
 uniform vec2 u_shift;
 uniform float u_history;
 
+vec4 finite_or_zero(vec4 value) {
+    return mix(vec4(0.0), value, lessThanEqual(abs(value), vec4(65504.0)));
+}
+
+/// The first frame after a resize has a zero history weight. The previous canvas is then not
+/// written yet, and a NaN in it survives a mix with a zero weight.
 void main() {
     ivec2 texel = ivec2(gl_FragCoord.xy);
     ivec2 tile_size = ivec2(u_size) / 2;
     ivec2 tile_origin = texel / tile_size * tile_size;
     ivec2 previous = texel + ivec2(u_shift);
     ivec2 local = previous - tile_origin;
-    vec4 current = texelFetch(u_current, ivec3(texel, 0), 0);
-    if (any(lessThan(local, ivec2(0))) || any(greaterThanEqual(local, tile_size))) {
+    vec4 current = finite_or_zero(texelFetch(u_current, ivec3(texel, 0), 0));
+    if (u_history <= 0.0 || any(lessThan(local, ivec2(0))) || any(greaterThanEqual(local, tile_size))) {
         o_color = current;
         return;
     }
-    o_color = mix(current, texelFetch(u_previous, ivec3(previous, 0), 0), u_history);
+    o_color = mix(current, finite_or_zero(texelFetch(u_previous, ivec3(previous, 0), 0)), u_history);
 }
 "#;
 
@@ -1097,6 +1380,21 @@ uniform float u_time;
 uniform vec2 u_target_size;
 uniform vec2 u_scene_size;
 uniform vec4 u_view_rect;
+uniform vec4 u_light_rect;
+
+vec2 light_uv(vec2 scene_uv) {
+    return u_light_rect.z > 0.0 ? u_light_rect.xy + scene_uv * u_light_rect.zw : scene_uv;
+}
+uniform vec4 u_field_rect;
+uniform vec2 u_field_size;
+
+/// The emission of the medium is on the field grid. The light map is on the light grid.
+vec2 emission_uv(vec2 scene_uv) {
+    vec2 uv = light_uv(scene_uv);
+    return u_field_rect.x > 0.0
+        ? (uv * u_scene_size * u_field_rect.xy + u_field_rect.zw) / u_field_size
+        : uv;
+}
 uniform float u_texel_world;
 uniform vec3 u_sky;
 uniform vec3 u_sun;
@@ -1129,7 +1427,7 @@ bool submerged(vec2 scene_uv) {
     if (normal_sample.a <= 0.0) {
         return false;
     }
-    int mode = int(floor(normal_sample.b / normal_sample.a * 4.0 + 0.5));
+    int mode = int(floor(normal_sample.b / normal_sample.a * 8.0 + 0.5));
     return (mode & 1) != 0;
 }
 
@@ -1208,6 +1506,8 @@ float luminance(vec3 color) {
     return dot(color, vec3(0.2126, 0.7152, 0.0722));
 }
 
+COLOR_FUNCTIONS
+
 WATER_FUNCTION
 
 void main() {
@@ -1215,6 +1515,7 @@ void main() {
         discard;
     }
     vec4 albedo = (u_maps & 4) != 0 ? v_color : texture(u_image, v_uv) * v_color;
+    albedo.rgb = srgb_decode(albedo.rgb);
     float shoreline = smoothstep(SHORE_LEVEL, SHORE_LEVEL * 2.0, albedo.a);
     if (shoreline <= 0.0) {
         discard;
@@ -1227,10 +1528,11 @@ void main() {
     float depth = albedo.a;
     vec3 normal = ripple_normal(v_uv.xy);
     if (u_debug == WATER_VIEW) {
-        o_color = vec4(vec3(normal.xy * 0.5 + 0.5, depth) * shoreline, shoreline);
+        o_color = vec4(srgb_decode(vec3(normal.xy * 0.5 + 0.5, depth)) * shoreline, shoreline);
         return;
     }
-    vec2 world_to_scene = 1.0 / (u_texel_world * u_scene_size);
+    vec2 light_scale = u_light_rect.z > 0.0 ? u_light_rect.zw : vec2(1.0);
+    vec2 world_to_scene = 1.0 / (u_texel_world * u_scene_size * light_scale);
     vec2 world_to_screen = world_to_scene / u_view_rect.zw;
 
     vec2 refracted_uv = screen_uv + normal.xy * u_refraction * depth * world_to_screen;
@@ -1240,7 +1542,7 @@ void main() {
     vec3 bed = textureLod(u_scene_color, vec3(refracted_uv, 0.0), depth * 1.5).rgb;
     bed *= 1.0 + u_caustics * caustics(v_uv.xy * u_ripple_scale) * (1.0 - depth * 0.7);
     float shadow = shadow_mask(scene_uv);
-    vec3 light_map = textureLod(u_light_map, vec3(scene_uv, 0.0), 1.0).rgb;
+    vec3 light_map = textureLod(u_light_map, vec3(light_uv(scene_uv), 0.0), 1.0).rgb;
     light_map = shadowed(light_map, shadow);
     vec3 light = light_map + u_ambient;
     vec3 sun = u_sun * (1.0 - shadow);
@@ -1277,10 +1579,11 @@ void main() {
     for (int index = 0; index < STREAK_TAPS; ++index) {
         float along = (float(index) + 0.5) / float(STREAK_TAPS);
         vec2 tap = scene_uv + (direction * u_reach * along) * world_to_scene;
-        streak += textureLod(u_emission, vec3(tap, 0.0), u_roughness + along * 2.0).rgb * (1.0 - along);
+        streak += textureLod(u_emission, vec3(emission_uv(tap), 0.0), u_roughness + along * 2.0).rgb * (1.0 - along);
     }
     reflection += streak * u_glints / float(STREAK_TAPS);
-    vec3 halo = textureLod(u_emission, vec3(scene_uv, 0.0), 4.0).rgb + textureLod(u_emission, vec3(scene_uv, 0.0), 6.0).rgb * 0.5;
+    vec2 halo_uv = emission_uv(scene_uv);
+    vec3 halo = textureLod(u_emission, vec3(halo_uv, 0.0), 4.0).rgb + textureLod(u_emission, vec3(halo_uv, 0.0), 6.0).rgb * 0.5;
 
     float facing = clamp(normal.z, 0.0, 1.0);
     float fresnel = u_reflectivity + (1.0 - u_reflectivity) * pow(1.0 - facing, 5.0);
@@ -1294,10 +1597,11 @@ void main() {
     glint += sun * sparkles * u_sparkles;
     float texel = 3.0 / u_scene_size.x;
     float lod = 3.0;
-    float left = luminance(textureLod(u_light_map, vec3(scene_uv - vec2(texel, 0.0), 0.0), lod).rgb);
-    float right = luminance(textureLod(u_light_map, vec3(scene_uv + vec2(texel, 0.0), 0.0), lod).rgb);
-    float down = luminance(textureLod(u_light_map, vec3(scene_uv - vec2(0.0, texel), 0.0), lod).rgb);
-    float up = luminance(textureLod(u_light_map, vec3(scene_uv + vec2(0.0, texel), 0.0), lod).rgb);
+    vec2 glint_uv = light_uv(scene_uv);
+    float left = luminance(textureLod(u_light_map, vec3(glint_uv - vec2(texel, 0.0), 0.0), lod).rgb);
+    float right = luminance(textureLod(u_light_map, vec3(glint_uv + vec2(texel, 0.0), 0.0), lod).rgb);
+    float down = luminance(textureLod(u_light_map, vec3(glint_uv - vec2(0.0, texel), 0.0), lod).rgb);
+    float up = luminance(textureLod(u_light_map, vec3(glint_uv + vec2(0.0, texel), 0.0), lod).rgb);
     vec2 gradient = vec2(right - left, up - down) / max(luminance(light), 1.0e-4);
     float local = smoothstep(0.02, 0.3, length(gradient));
     vec3 toward_light = normalize(vec3(gradient / max(length(gradient), 1.0e-4), 0.5));

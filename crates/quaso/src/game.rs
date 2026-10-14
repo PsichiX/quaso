@@ -326,11 +326,19 @@ impl GameTimeControl {
     }
 }
 
+/// A command or an input event renders this many frames before an idle game skips frames again.
+/// A screen capture command needs the frame after the command, so one frame is not enough.
+const WAKE_FRAMES: u8 = 3;
+
 #[derive(Debug, Default, Clone)]
 pub struct GameAppControl {
     close_requested: bool,
     fullscreen: bool,
     fullscreen_request: Option<bool>,
+    max_pixel_ratio_request: Option<Option<f64>>,
+    max_fps_request: Option<Option<f32>>,
+    idle: bool,
+    skipped_frames: u64,
 }
 
 impl GameAppControl {
@@ -352,6 +360,30 @@ impl GameAppControl {
 
     pub fn is_fullscreen(&self) -> bool {
         self.fullscreen_request.unwrap_or(self.fullscreen)
+    }
+
+    /// Web only: the canvas buffer uses at most this device pixel ratio.
+    pub fn set_max_pixel_ratio(&mut self, max_pixel_ratio: Option<f64>) {
+        self.max_pixel_ratio_request = Some(max_pixel_ratio);
+    }
+
+    /// Web only: the loop skips animation frames to stay at or below this rate.
+    pub fn set_max_fps(&mut self, max_fps: Option<f32>) {
+        self.max_fps_request = Some(max_fps);
+    }
+
+    /// An idle game shows the same picture until an input event or a command comes.
+    /// Then the next frames are skipped: no update and no draw. The game sets it every frame.
+    pub fn set_idle(&mut self, idle: bool) {
+        self.idle = idle;
+    }
+
+    pub fn is_idle(&self) -> bool {
+        self.idle
+    }
+
+    pub fn skipped_frames(&self) -> u64 {
+        self.skipped_frames
     }
 }
 
@@ -484,6 +516,7 @@ pub struct GameInstance {
     assets: AssetDatabase,
     audio: Audio,
     timer: Instant,
+    wake_frames: u8,
     frame: usize,
     #[allow(clippy::type_complexity)]
     states: Vec<(Box<dyn GameState>, JobHandle<()>, Gc<()>)>,
@@ -526,6 +559,7 @@ impl Default for GameInstance {
             assets: Default::default(),
             audio: Default::default(),
             timer: Instant::now(),
+            wake_frames: WAKE_FRAMES,
             frame: 0,
             states: Default::default(),
             state_change: Default::default(),
@@ -1871,9 +1905,33 @@ impl AppState<Vertex> for GameInstance {
         if let Some(fullscreen) = self.globals.app.fullscreen_request.take() {
             control.set_fullscreen(fullscreen);
         }
+        if let Some(max_pixel_ratio) = self.globals.app.max_pixel_ratio_request.take() {
+            control.set_max_pixel_ratio(max_pixel_ratio);
+        }
+        if let Some(max_fps) = self.globals.app.max_fps_request.take() {
+            control.set_max_fps(max_fps);
+        }
+    }
+
+    fn skip_redraw(&mut self) -> bool {
+        if self.commands.pending() > 0 {
+            self.wake_frames = WAKE_FRAMES;
+        }
+        let skip = self.globals.app.idle && self.wake_frames == 0;
+        self.wake_frames = self.wake_frames.saturating_sub(1);
+        if skip {
+            self.globals.app.skipped_frames += 1;
+            self.timer = Instant::now();
+        }
+        skip
     }
 
     fn on_event(&mut self, event: Event<()>, _: Option<&Window>) -> bool {
+        if let Event::WindowEvent { event, .. } = &event
+            && !matches!(event, WindowEvent::RedrawRequested)
+        {
+            self.wake_frames = WAKE_FRAMES;
+        }
         self.process_event(&event)
     }
 }

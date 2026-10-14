@@ -1,12 +1,14 @@
 use quaso::{
-    context::GameContext,
-    lighting::material::{LightMaterial, Lit, Shadow, ShadowMaterial},
+    lighting::material::{LightMaterial, ShadowMaterial},
+    scene::{
+        Emitter, Forward, Light, NodeId, Primitive, Scene, SceneNode, ShadowCaster, Silhouette,
+    },
     third_party::{
         noise::{NoiseFn, Perlin},
         spitfire_draw::{
             particles::{ParticleEmitter, ParticleInstance},
             sprite::{Sprite, SpriteTexture},
-            utils::{Drawable, TextureRef},
+            utils::TextureRef,
         },
         spitfire_glow::renderer::GlowTextureFiltering,
         vek::{Rgb, Rgba, Vec2},
@@ -19,13 +21,14 @@ pub const LANTERN_COUNT: usize = 6;
 /// The player lights a stone lantern from this distance. Contact distance is about 46.
 pub const LANTERN_REACH: f32 = 90.0;
 const FLOOR_TILE: f32 = 320.0;
+/// The floor covers the widest view at the world edge.
 const VIEW_RADIUS: f32 = 750.0;
-const FLAME_COLOR: Rgb<f32> = Rgb::new(1.0, 0.5, 0.15);
+const FLAME_COLOR: Rgb<f32> = Rgb::new(1.0, 0.74, 0.42);
 /// An unlit stone lantern still glows a little, so the player can find it in the dark.
 const EMBER: f32 = 0.6;
 const MUSHROOM_COLOR: Rgb<f32> = Rgb::new(0.3, 1.0, 0.85);
 const FIREFLY_COLOR: Rgb<f32> = Rgb::new(0.75, 1.0, 0.3);
-const PAPER_COLOR: Rgb<f32> = Rgb::new(1.0, 0.35, 0.15);
+const PAPER_COLOR: Rgb<f32> = Rgb::new(1.0, 0.63, 0.42);
 const CLEARING_RADIUS: f32 = 220.0;
 /// Spirits do not enter this far into the light of a lit stone lantern.
 const LANTERN_SAFE_RADIUS: f32 = 170.0;
@@ -54,6 +57,9 @@ const ROOF_SKY_LIGHT: f32 = 0.5;
 
 const CANOPIES: [&str; 2] = ["textures/canopy-a", "textures/canopy-b"];
 const CANOPY_HEIGHT: f32 = 140.0;
+/// The trunk casts a thin column of copies from a tenth of the canopy height up to the canopy.
+const TRUNK_SHADOW_STEPS: u32 = 10;
+const TRUNK_SHADOW_SOFTNESS: f32 = 0.6 * TRUNK_SHADOW_STEPS as f32 / CANOPY_HEIGHT;
 const ROCKS: [(&str, &str); 2] = [
     ("textures/rock-a", "textures/rock-a-normal"),
     ("textures/rock-b", "textures/rock-b-normal"),
@@ -286,230 +292,331 @@ impl Forest {
         self.noise.get([time as f64 * 5.0, phase as f64 * 7.3]) as f32
     }
 
-    pub fn draw_ground(&self, context: &mut GameContext, camera: Vec2<f32>, time: f32) {
-        let first = (camera - VIEW_RADIUS) / FLOOR_TILE;
-        let last = (camera + VIEW_RADIUS) / FLOOR_TILE;
-        for y in first.y.floor() as i32..=last.y.ceil() as i32 {
-            for x in first.x.floor() as i32..=last.x.ceil() as i32 {
-                Lit::new(
-                    sprite(
-                        "textures/forest-floor",
-                        Vec2::new(x as f32, y as f32) * FLOOR_TILE,
-                        FLOOR_TILE + 0.5,
-                        0.0,
+    /// Builds the forest nodes in the draw order of the old immediate passes.
+    /// The overhead nodes draw only in the forward stage, so their place in the tree does not
+    /// matter for the ground pass.
+    pub fn build(&self, scene: &mut Scene, parent: NodeId) -> ForestNodes {
+        let ground = scene.spawn(parent, SceneNode::group());
+        let tiles = ((WORLD_RADIUS + VIEW_RADIUS) / FLOOR_TILE).ceil() as i32;
+        for y in -tiles..tiles {
+            let row = scene.spawn(ground, SceneNode::group());
+            for x in -tiles..tiles {
+                lit(
+                    scene,
+                    row,
+                    SceneNode::sprite(
+                        sprite("textures/forest-floor", Vec2::zero(), FLOOR_TILE + 0.5, 0.0)
+                            .pivot(0.0.into()),
                     )
-                    .pivot(0.0.into()),
+                    .position(Vec2::new(x as f32, y as f32) * FLOOR_TILE),
                     LightMaterial::default()
                         .normal_map(map("textures/forest-floor-normal", "u_normal_map")),
-                )
-                .draw(context.draw, context.graphics);
+                );
             }
         }
-
-        for fern in visible(&self.ferns, camera) {
-            Lit::new(
-                sprite("textures/fern", fern.position, fern.size, fern.rotation),
+        for fern in &self.ferns {
+            lit(
+                scene,
+                ground,
+                placed("textures/fern", fern),
                 LightMaterial::filter(Rgb::new(0.3, 0.6, 0.25), 10.0)
                     .normal_map(map("textures/fern-normal", "u_normal_map"))
                     .absorption_map(map("textures/fern-absorption", "u_absorption_map")),
-            )
-            .draw(context.draw, context.graphics);
+            );
         }
+        let mushrooms = self
+            .mushrooms
+            .iter()
+            .map(|mushroom| {
+                let node = lit(
+                    scene,
+                    ground,
+                    placed("textures/mushrooms", mushroom),
+                    LightMaterial::filter(Rgb::new(0.6, 0.8, 0.7), 8.0),
+                );
+                scene.attach(
+                    node,
+                    Emitter::new(MUSHROOM_COLOR, 0.8)
+                        .map(map("textures/mushrooms-emission", "u_emission_map")),
+                );
+                node
+            })
+            .collect();
 
-        for (index, mushroom) in visible(&self.mushrooms, camera).enumerate() {
-            let pulse = 1.0 + self.flicker(time * 0.1, index as f32) * 0.5;
-            Lit::new(
-                sprite(
-                    "textures/mushrooms",
-                    mushroom.position,
-                    mushroom.size,
-                    mushroom.rotation,
+        let solids = scene.spawn(parent, SceneNode::group());
+        for rock in &self.rocks {
+            let (albedo, normal) = ROCKS[rock.variant];
+            lit(
+                scene,
+                solids,
+                placed(albedo, rock),
+                LightMaterial::opaque().normal_map(map(normal, "u_normal_map")),
+            );
+        }
+        for tree in &self.trees {
+            let trunk = lit(
+                scene,
+                solids,
+                SceneNode::sprite(sprite("textures/trunk", Vec2::zero(), 90.0, 0.0))
+                    .position(tree.position)
+                    .rotation(tree.rotation),
+                LightMaterial::opaque()
+                    .normal_map(map("textures/trunk-normal", "u_normal_map"))
+                    .absorption_map(map("textures/trunk-absorption", "u_absorption_map")),
+            );
+            scene.attach(
+                trunk,
+                ShadowCaster::new(
+                    ShadowMaterial::new(CANOPY_HEIGHT)
+                        .opacity(0.8)
+                        .softness(2.0),
+                )
+                .shape(Silhouette::sprite(sprite(
+                    "textures/trunk",
+                    Vec2::zero(),
+                    40.0,
+                    0.0,
+                )))
+                .column(TRUNK_SHADOW_SOFTNESS)
+                .column_steps(
+                    CANOPY_HEIGHT / TRUNK_SHADOW_STEPS as f32,
+                    TRUNK_SHADOW_STEPS - 1,
                 ),
-                LightMaterial::filter(Rgb::new(0.6, 0.8, 0.7), 8.0)
-                    .emission(MUSHROOM_COLOR, 0.8 * pulse)
-                    .emission_map(map("textures/mushrooms-emission", "u_emission_map")),
+            );
+        }
+        let flames = self
+            .lanterns
+            .iter()
+            .map(|lantern| {
+                lit(
+                    scene,
+                    solids,
+                    SceneNode::sprite(sprite("textures/stone-lantern", Vec2::zero(), 80.0, 0.0))
+                        .position(lantern.position)
+                        .rotation(lantern.rotation),
+                    LightMaterial::filter(Rgb::broadcast(0.35), 25.0)
+                        .normal_map(map("textures/stone-lantern-normal", "u_normal_map"))
+                        .absorption_map(map(
+                            "textures/stone-lantern-absorption",
+                            "u_absorption_map",
+                        )),
+                );
+                let flame = lit(
+                    scene,
+                    solids,
+                    SceneNode::sprite(sprite("textures/flame", Vec2::zero(), 16.0, 0.0))
+                        .position(lantern.position),
+                    LightMaterial::opaque(),
+                );
+                scene.attach(flame, Emitter::new(FLAME_COLOR, EMBER));
+                flame
+            })
+            .collect();
+        let fireflies = lit(
+            scene,
+            solids,
+            SceneNode::particles(ParticleEmitter::default(), Vec::new()),
+            LightMaterial::emitter(FIREFLY_COLOR, 5.0).vertex_emission(),
+        );
+
+        let shrine = scene.spawn(parent, SceneNode::group());
+        lit(
+            scene,
+            shrine,
+            SceneNode::sprite(sprite("textures/shrine-roof", Vec2::zero(), 150.0, 0.0))
+                .position(SHRINE),
+            LightMaterial::opaque().normal_map(map("textures/shrine-roof-normal", "u_normal_map")),
+        );
+        lit(
+            scene,
+            shrine,
+            SceneNode::sprite(sprite("textures/offering", Vec2::zero(), 36.0, 0.0))
+                .position(Vec2::new(0.0, 40.0)),
+            LightMaterial::opaque().normal_map(map("textures/offering-normal", "u_normal_map")),
+        );
+        for x in [-TORII_HALF_WIDTH, TORII_HALF_WIDTH] {
+            lit(
+                scene,
+                shrine,
+                SceneNode::sprite(sprite("textures/torii-pillar", Vec2::zero(), 20.0, 0.0))
+                    .position(Vec2::new(x, TORII_Y)),
+                LightMaterial::opaque()
+                    .normal_map(map("textures/torii-pillar-normal", "u_normal_map")),
+            );
+        }
+        let chochins = CHOCHINS
+            .into_iter()
+            .map(|position| {
+                let chochin = lit(
+                    scene,
+                    shrine,
+                    SceneNode::sprite(sprite("textures/chochin", Vec2::zero(), 30.0, 0.0))
+                        .position(position),
+                    LightMaterial::filter(Rgb::new(1.0, 0.7, 0.58), 6.0),
+                );
+                scene.attach(
+                    chochin,
+                    Emitter::new(PAPER_COLOR, 0.6)
+                        .map(map("textures/chochin-emission", "u_emission_map")),
+                );
+                chochin
+            })
+            .collect();
+
+        let overhead = scene.spawn(parent, SceneNode::group());
+        let canopies = self
+            .trees
+            .iter()
+            .map(|tree| {
+                let shape = sprite(CANOPIES[tree.variant], Vec2::zero(), tree.size, 0.0);
+                let canopy = scene.spawn(
+                    overhead,
+                    SceneNode::sprite(shape.clone())
+                        .position(tree.position)
+                        .rotation(tree.rotation),
+                );
+                scene.attach(canopy, Forward);
+                scene.attach(
+                    canopy,
+                    ShadowCaster::new(
+                        ShadowMaterial::new(CANOPY_HEIGHT)
+                            .opacity(0.6)
+                            .softness(14.0),
+                    )
+                    .shape(Silhouette::sprite(shape)),
+                );
+                canopy
+            })
+            .collect();
+        let roofs = self
+            .cave_roof
+            .iter()
+            .map(|roof| {
+                let node = scene.spawn(overhead, placed(ROCKS[roof.variant].0, roof));
+                scene.attach(node, Forward);
+                scene.attach(node, Light(LightMaterial::default()));
+                node
+            })
+            .collect();
+        let beam = scene.spawn(
+            overhead,
+            SceneNode::sprite(
+                sprite("textures/torii-beam", Vec2::zero(), 1.0, 0.0).size(Vec2::new(150.0, 37.5)),
             )
-            .draw(context.draw, context.graphics);
+            .position(Vec2::new(0.0, TORII_Y)),
+        );
+        scene.attach(beam, Forward);
+        ForestNodes {
+            mushrooms,
+            flames,
+            fireflies,
+            chochins,
+            canopies,
+            roofs,
         }
     }
 
     /// Fireflies fade out as `night` goes from `1` to `0`.
-    pub fn draw_solids(&self, context: &mut GameContext, camera: Vec2<f32>, time: f32, night: f32) {
-        for rock in visible(&self.rocks, camera) {
-            let (albedo, normal) = ROCKS[rock.variant];
-            Lit::new(
-                sprite(albedo, rock.position, rock.size, rock.rotation),
-                LightMaterial::opaque().normal_map(map(normal, "u_normal_map")),
-            )
-            .draw(context.draw, context.graphics);
+    /// The canopies and the cave roof fade near the player.
+    pub fn animate(
+        &self,
+        scene: &mut Scene,
+        nodes: &ForestNodes,
+        time: f32,
+        night: f32,
+        player: Vec2<f32>,
+        sky_light: Rgb<f32>,
+    ) {
+        for (index, node) in nodes.mushrooms.iter().enumerate() {
+            let pulse = 1.0 + self.flicker(time * 0.1, index as f32) * 0.5;
+            set_emitter(scene, *node, 0.8 * pulse);
         }
-
-        for tree in visible(&self.trees, camera) {
-            Lit::new(
-                sprite("textures/trunk", tree.position, 90.0, tree.rotation),
-                LightMaterial::opaque()
-                    .normal_map(map("textures/trunk-normal", "u_normal_map"))
-                    .absorption_map(map("textures/trunk-absorption", "u_absorption_map")),
-            )
-            .draw(context.draw, context.graphics);
-        }
-
-        for (index, lantern) in self.lanterns.iter().enumerate() {
-            if lantern.position.distance(camera) > VIEW_RADIUS {
-                continue;
-            }
+        for (index, (lantern, node)) in self.lanterns.iter().zip(&nodes.flames).enumerate() {
             let flicker = 1.0 + self.flicker(time, index as f32) * 0.35;
-            Lit::new(
-                sprite(
-                    "textures/stone-lantern",
-                    lantern.position,
-                    80.0,
-                    lantern.rotation,
-                ),
-                LightMaterial::filter(Rgb::broadcast(0.35), 25.0)
-                    .normal_map(map("textures/stone-lantern-normal", "u_normal_map"))
-                    .absorption_map(map("textures/stone-lantern-absorption", "u_absorption_map")),
-            )
-            .draw(context.draw, context.graphics);
-            Lit::new(
-                sprite("textures/flame", lantern.position, 16.0, 0.0),
-                LightMaterial::emitter(FLAME_COLOR, EMBER + 8.0 * lantern.lit * flicker),
-            )
-            .draw(context.draw, context.graphics);
+            set_emitter(scene, *node, EMBER + 8.0 * lantern.lit * flicker);
         }
-
-        let fireflies = Lit::new(
-            ParticleEmitter::default(),
-            LightMaterial::emitter(FIREFLY_COLOR, 12.0).vertex_emission(),
-        );
-        fireflies
-            .object()
-            .emit(self.fireflies.iter().filter_map(|firefly| {
+        let fireflies = self
+            .fireflies
+            .iter()
+            .filter_map(|firefly| {
                 let phase = firefly.variant as f32;
                 let wander = Vec2::new(
                     self.flicker(time * 0.05, phase),
                     self.flicker(time * 0.05, phase + 100.0),
                 ) * 120.0;
-                let position = firefly.position + wander;
                 let blink = (self.flicker(time * 0.2, phase + 200.0) * 3.0).clamp(0.0, 1.0) * night;
-                (position.distance(camera) <= VIEW_RADIUS && blink > 0.0).then(|| {
+                (blink > 0.0).then(|| {
                     ParticleInstance::default()
-                        .position(position)
+                        .position(firefly.position + wander)
                         .size(firefly.size.into())
                         .pivot(0.5.into())
                         .tint(Rgba::new(blink, blink, blink, 1.0))
                 })
-            }))
-            .draw(context.draw, context.graphics);
-    }
-
-    pub fn draw_shrine(&self, context: &mut GameContext, time: f32) {
-        Lit::new(
-            sprite("textures/shrine-roof", SHRINE, 150.0, 0.0),
-            LightMaterial::opaque().normal_map(map("textures/shrine-roof-normal", "u_normal_map")),
-        )
-        .draw(context.draw, context.graphics);
-        Lit::new(
-            sprite("textures/offering", Vec2::new(0.0, 40.0), 36.0, 0.0),
-            LightMaterial::opaque().normal_map(map("textures/offering-normal", "u_normal_map")),
-        )
-        .draw(context.draw, context.graphics);
-        for x in [-TORII_HALF_WIDTH, TORII_HALF_WIDTH] {
-            Lit::new(
-                sprite("textures/torii-pillar", Vec2::new(x, TORII_Y), 20.0, 0.0),
-                LightMaterial::opaque()
-                    .normal_map(map("textures/torii-pillar-normal", "u_normal_map")),
-            )
-            .draw(context.draw, context.graphics);
+            })
+            .collect();
+        if let Some(mut node) = scene.node_mut(nodes.fireflies)
+            && let Primitive::Particles(particles) = &mut node.primitive
+        {
+            particles.instances = fireflies;
         }
-        for (index, position) in CHOCHINS.into_iter().enumerate() {
+        for (index, node) in nodes.chochins.iter().enumerate() {
             let flicker = 1.0 + self.flicker(time, 30.0 + index as f32) * 0.25;
-            Lit::new(
-                sprite("textures/chochin", position, 30.0, 0.0),
-                LightMaterial::filter(Rgb::new(1.0, 0.45, 0.3), 6.0)
-                    .emission(PAPER_COLOR, 0.6 * flicker)
-                    .emission_map(map("textures/chochin-emission", "u_emission_map")),
-            )
-            .draw(context.draw, context.graphics);
+            set_emitter(scene, *node, 0.6 * flicker);
         }
-    }
-
-    pub fn draw_torii_beam(&self, context: &mut GameContext) {
-        Lit::forward(
-            sprite("textures/torii-beam", Vec2::new(0.0, TORII_Y), 1.0, 0.0)
-                .size(Vec2::new(150.0, 37.5)),
-            LightMaterial::default(),
-        )
-        .draw(context.draw, context.graphics);
-    }
-
-    /// The canopy casts a soft shadow away from the sun, and a thin column joins it to the trunk.
-    pub fn draw_canopy_shadows(&self, context: &mut GameContext, camera: Vec2<f32>) {
-        for tree in visible(&self.trees, camera) {
-            Shadow::new(
-                sprite(
-                    CANOPIES[tree.variant],
-                    tree.position,
-                    tree.size,
-                    tree.rotation,
-                ),
-                ShadowMaterial::new(CANOPY_HEIGHT)
-                    .opacity(0.6)
-                    .softness(14.0),
-            )
-            .draw(context.draw, context.graphics);
-            for step in 1..=10 {
-                Shadow::new(
-                    sprite("textures/trunk", tree.position, 40.0, tree.rotation),
-                    ShadowMaterial::new(CANOPY_HEIGHT * step as f32 / 10.0)
-                        .opacity(0.8)
-                        .softness(2.0 + step as f32 * 0.6),
-                )
-                .draw(context.draw, context.graphics);
-            }
-        }
-    }
-
-    pub fn draw_canopies(
-        &self,
-        context: &mut GameContext,
-        camera: Vec2<f32>,
-        player: Vec2<f32>,
-        sky_light: Rgb<f32>,
-    ) {
-        for tree in visible(&self.trees, camera) {
+        for (tree, node) in self.trees.iter().zip(&nodes.canopies) {
             let distance = tree.position.distance(player);
             let opacity = smoothstep(40.0, tree.size * 0.6, distance).max(0.2) * 0.95;
-            Lit::forward(
-                sprite(
-                    CANOPIES[tree.variant],
-                    tree.position,
-                    tree.size,
-                    tree.rotation,
-                )
-                .tint(Rgba::new(1.3, 1.3, 1.3, opacity)),
-                LightMaterial::default(),
-            )
-            .draw(context.draw, context.graphics);
+            set_tint(scene, *node, Rgba::new(1.3, 1.3, 1.3, opacity));
         }
-
-        for roof in visible(&self.cave_roof, camera) {
-            let distance = roof.position.distance(player);
-            let opacity = smoothstep(60.0, 140.0, distance);
-            if opacity <= 0.0 {
-                continue;
+        for (roof, node) in self.cave_roof.iter().zip(&nodes.roofs) {
+            let opacity = smoothstep(60.0, 140.0, roof.position.distance(player));
+            set_tint(scene, *node, Rgba::new(0.0, 0.0, 0.0, opacity));
+            if let Some(mut node) = scene.node_mut(*node) {
+                node.visible = opacity > 0.0;
             }
-            let albedo = ROCKS[roof.variant].0;
-            Lit::forward(
-                sprite(albedo, roof.position, roof.size, roof.rotation)
-                    .tint(Rgba::new(0.0, 0.0, 0.0, opacity)),
-                LightMaterial::default()
+            if let Some(mut light) = scene.attr_mut::<Light>(*node) {
+                light.0 = LightMaterial::default()
                     .emission(sky_light, ROOF_SKY_LIGHT)
-                    .emission_map(map(albedo, "u_emission_map")),
-            )
-            .draw(context.draw, context.graphics);
+                    .emission_map(map(ROCKS[roof.variant].0, "u_emission_map"));
+            }
         }
     }
+}
+
+/// The forest nodes that change in `Forest::animate`.
+pub struct ForestNodes {
+    mushrooms: Vec<NodeId>,
+    flames: Vec<NodeId>,
+    fireflies: NodeId,
+    chochins: Vec<NodeId>,
+    canopies: Vec<NodeId>,
+    roofs: Vec<NodeId>,
+}
+
+pub fn lit(scene: &mut Scene, parent: NodeId, node: SceneNode, material: LightMaterial) -> NodeId {
+    let node = scene.spawn(parent, node);
+    scene.attach(node, Light(material));
+    node
+}
+
+pub fn set_emitter(scene: &mut Scene, node: NodeId, intensity: f32) {
+    if let Some(mut emitter) = scene.attr_mut::<Emitter>(node) {
+        emitter.intensity = intensity;
+    }
+}
+
+fn set_tint(scene: &mut Scene, node: NodeId, tint: Rgba<f32>) {
+    if let Some(mut node) = scene.node_mut(node)
+        && let Primitive::Sprite(sprite) = &mut node.primitive
+    {
+        sprite.tint = tint;
+    }
+}
+
+fn placed(texture: &'static str, placement: &Placement) -> SceneNode {
+    SceneNode::sprite(sprite(texture, Vec2::zero(), placement.size, 0.0))
+        .position(placement.position)
+        .rotation(placement.rotation)
 }
 
 pub fn sprite(texture: &'static str, position: Vec2<f32>, size: f32, rotation: f32) -> Sprite {
@@ -588,12 +695,6 @@ pub fn map(texture: &'static str, sampler: &'static str) -> SpriteTexture {
 pub fn smoothstep(from: f32, to: f32, value: f32) -> f32 {
     let factor = ((value - from) / (to - from)).clamp(0.0, 1.0);
     factor * factor * (3.0 - 2.0 * factor)
-}
-
-fn visible(items: &[Placement], camera: Vec2<f32>) -> impl Iterator<Item = &Placement> {
-    items
-        .iter()
-        .filter(move |item| item.position.distance(camera) < VIEW_RADIUS + item.size)
 }
 
 /// SplitMix64. The forest must be the same on every platform and every run.
